@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { OPERATOR_NAME, TOWNSHIP_NAME } from "@/lib/config";
 import type { CmsState } from "@/lib/ws";
 import type { CameraConfig } from "@/lib/types";
@@ -37,7 +39,11 @@ export default function CameraGrid({ cameras, state, connected }: CameraGridProp
   const alertCamera = state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CmsHeader connected={connected} />
+      <CmsHeader connected={connected}>
+        <Link href="/incidents" className="text-slate-200 underline-offset-4 hover:underline">
+          Incidents
+        </Link>
+      </CmsHeader>
       <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-2 p-2">
         {cameras.map((camera) => (
           <CameraTile
