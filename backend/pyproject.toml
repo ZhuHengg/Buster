@@ -1,0 +1,42 @@
+[project]
+name = "cctv-alert-backend"
+version = "0.1.0"
+description = "Proactive CCTV alert system backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "ultralytics",
+    "lap",
+    "opencv-python",
+    "numpy",
+    "anthropic",
+    "twilio",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "imageio-ffmpeg",
+    "torch",
+    "torchvision",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = ["gpu: needs CUDA and a real clip"]
