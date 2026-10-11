@@ -10,3 +10,7 @@ frontend/.next
 .superpowers/
 __pycache__/
 .pytest_cache/
+frontend/dev.log
+frontend/.env.local
+frontend/next-env.d.ts
+backend/data/precomputed/
