@@ -1,16 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { getCameras } from "@/lib/api";
+import { ApiError, approve, getCameras, reject } from "@/lib/api";
+import { OPERATOR_NAME } from "@/lib/config";
 import type { CameraConfig } from "@/lib/types";
 import { useCmsSocket } from "@/lib/ws";
 
+import AlertCard from "./AlertCard";
 import CameraGrid, { CmsHeader } from "./CameraGrid";
 
+const CLOSE_AFTER_MS = 5000;
+
+function Toast({ text, onDone }: { text: string; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 4000);
+    return () => clearTimeout(t);
+  }, [text, onDone]);
+  return (
+    <div
+      role="status"
+      className="fixed left-1/2 top-4 z-[60] -translate-x-1/2 rounded-md border border-warn/70 bg-panel px-4 py-2 text-sm font-medium text-warn shadow-xl"
+    >
+      {text}
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { state, connected } = useCmsSocket();
+  const { state, connected, applyIncident } = useCmsSocket();
   const [cameras, setCameras] = useState<CameraConfig[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [focusId, setFocusId] = useState<string | null>(null); // approved incident kept open for its timeline
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +50,37 @@ export default function Dashboard() {
     };
   }, []);
 
+  const shownId = focusId ?? state.activeAlertId;
+  const shown = shownId ? state.incidents[shownId] : undefined;
+  const callStatus = focusId ? state.incidents[focusId]?.escalation.find((s) => s.channel === "police_call")?.status : undefined;
+  const callFinished = callStatus === "completed" || callStatus === "failed";
+
+  // the card stays open while the call is placed, then closes by itself
+  useEffect(() => {
+    if (!focusId || !callFinished) return;
+    const t = setTimeout(() => setFocusId(null), CLOSE_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [focusId, callFinished]);
+
+  const decide = useCallback(
+    async (kind: "approve" | "reject") => {
+      if (!shown) return;
+      setBusy(true);
+      try {
+        const updated = await (kind === "approve" ? approve : reject)(shown.id, OPERATOR_NAME);
+        applyIncident(updated);
+        if (kind === "approve") setFocusId(updated.id);
+      } catch (err) {
+        setToast(err instanceof ApiError && err.status === 409 ? "Already handled" : "Action failed. Please try again.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [shown, applyIncident],
+  );
+
+  const clearToast = useCallback(() => setToast(null), []);
+
   if (cameras === null) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -36,5 +89,19 @@ export default function Dashboard() {
       </div>
     );
   }
-  return <CameraGrid cameras={cameras} state={state} connected={connected} />;
+  return (
+    <>
+      <CameraGrid cameras={cameras} state={state} connected={connected} />
+      {shown && (
+        <AlertCard
+          incident={shown}
+          camera={cameras.find((c) => c.id === shown.camera_id)}
+          onApprove={() => void decide("approve")}
+          onReject={() => void decide("reject")}
+          busy={busy}
+        />
+      )}
+      {toast && <Toast text={toast} onDone={clearToast} />}
+    </>
+  );
 }

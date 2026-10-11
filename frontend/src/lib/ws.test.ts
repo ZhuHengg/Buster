@@ -210,4 +210,11 @@ describe("useCmsSocket", () => {
     });
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
+
+  it("applyIncident puts a REST response into state without waiting for the socket", async () => {
+    vi.mocked(getIncidents).mockResolvedValue([]);
+    const { result } = renderHook(() => useCmsSocket());
+    act(() => result.current.applyIncident(incident("A", "APPROVED")));
+    expect(result.current.state.incidents["A"].status).toBe("APPROVED");
+  });
 });

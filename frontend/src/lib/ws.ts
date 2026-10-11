@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { getIncidents, wsUrl } from "./api";
 import type { DetectionsMsg, Incident, SyncMsg, WsMsg } from "./types";
@@ -70,7 +70,11 @@ export function backoffMs(attempt: number): number {
 
 /** One WebSocket to the backend. On every (re)connect the incidents are reloaded over REST,
  *  so a dropped socket or a page refresh never loses a pending alert. */
-export function useCmsSocket(): { state: CmsState; connected: boolean } {
+export function useCmsSocket(): {
+  state: CmsState;
+  connected: boolean;
+  applyIncident: (incident: Incident) => void;
+} {
   const [state, dispatch] = useReducer(cmsReducer, initialCmsState);
   const [connected, setConnected] = useState(false);
   const queue = useRef<CmsAction[]>([]);
@@ -137,5 +141,11 @@ export function useCmsSocket(): { state: CmsState; connected: boolean } {
     };
   }, []);
 
-  return { state, connected };
+  // REST responses to guard actions go straight into state, so the card never waits on the socket
+  const applyIncident = useCallback(
+    (incident: Incident) => dispatch({ type: "incident.updated", incident }),
+    [],
+  );
+
+  return { state, connected, applyIncident };
 }
