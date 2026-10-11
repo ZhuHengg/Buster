@@ -1,0 +1,23 @@
+{
+  "is_incident": true,
+  "incident_type": "snatch_theft",
+  "confidence": 0.92,
+  "summary": "A motorcycle rider stopped beside a woman in a pink top at the roadside, grabbed her bag and rode off; the victim fell to the ground.",
+  "suspects": [
+    {
+      "track_id": 16,
+      "description": "Rider on the motorcycle in a light top and helmet, slim build"
+    }
+  ],
+  "victim": {
+    "track_id": 1,
+    "description": "Woman in a pink top, knocked to the ground"
+  },
+  "vehicle": {
+    "type": "motorcycle",
+    "colour": "dark",
+    "plate_visible": false,
+    "plate_text": null
+  },
+  "escape_direction": "east"
+}

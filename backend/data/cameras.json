@@ -2,7 +2,7 @@
   {
     "id": "CAM-01",
     "name": "Elmina Shoplot Row A",
-    "location": "Elmina Shoplot Row A",
+    "location": "Elmina Central, Row A",
     "clip": null,
     "analyse": false,
     "exits": {},
@@ -11,11 +11,11 @@
   {
     "id": "CAM-02",
     "name": "Elmina Shoplot Row B",
-    "location": "Elmina Shoplot Row B",
+    "location": "Elmina Central, Row B",
     "clip": "case-2.mp4",
     "analyse": true,
     "exits": {
-      "up": "Gate B"
+      "right": "Gate B"
     },
     "compass": {
       "up": "north",
@@ -45,7 +45,7 @@
   {
     "id": "CAM-05",
     "name": "Pasar Mini Car Park",
-    "location": "Pasar Mini",
+    "location": "Pasar Mini, Elmina Central",
     "clip": null,
     "analyse": false,
     "exits": {},
@@ -63,12 +63,10 @@
   {
     "id": "CAM-07",
     "name": "Elmina Shoplot Row B Rear Lane",
-    "location": "Row B Rear Lane",
+    "location": "Elmina Central, Row B rear lane",
     "clip": "case-1.mp4",
     "analyse": true,
-    "exits": {
-      "up": "Gate B"
-    },
+    "exits": {},
     "compass": {
       "up": "north",
       "down": "south",
