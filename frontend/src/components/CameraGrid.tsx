@@ -1,0 +1,54 @@
+"use client";
+
+import { OPERATOR_NAME, TOWNSHIP_NAME } from "@/lib/config";
+import type { CmsState } from "@/lib/ws";
+import type { CameraConfig } from "@/lib/types";
+
+import CameraTile from "./CameraTile";
+
+export function CmsHeader({ connected, children }: { connected: boolean; children?: React.ReactNode }) {
+  return (
+    <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2">
+      <div className="flex items-baseline gap-3">
+        <span className="text-sm font-semibold tracking-wide text-slate-100">{TOWNSHIP_NAME}</span>
+        <span className="text-xs uppercase tracking-[0.18em] text-muted">Central Monitoring System</span>
+      </div>
+      <div className="flex items-center gap-5 text-xs text-muted">
+        {children}
+        <span>
+          Operator <span className="font-medium text-slate-200">{OPERATOR_NAME}</span>
+        </span>
+        <span className="flex items-center gap-1.5" role="status">
+          <span className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "rec-dot bg-accent"}`} />
+          {connected ? "Live" : "Reconnecting"}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+export interface CameraGridProps {
+  cameras: CameraConfig[];
+  state: CmsState;
+  connected: boolean;
+}
+
+export default function CameraGrid({ cameras, state, connected }: CameraGridProps) {
+  const alertCamera = state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <CmsHeader connected={connected} />
+      <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-2 p-2">
+        {cameras.map((camera) => (
+          <CameraTile
+            key={camera.id}
+            camera={camera}
+            detections={state.detections[camera.id] ?? []}
+            sync={state.sync[camera.id]}
+            alerting={camera.id === alertCamera}
+          />
+        ))}
+      </main>
+    </div>
+  );
+}
