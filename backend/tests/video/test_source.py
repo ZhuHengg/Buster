@@ -41,3 +41,29 @@ def test_source_start_wall_time_updates_on_loop(tiny_clip):
     for _ in range(10):
         next(it)
     assert src.start_wall_time >= first
+
+
+def test_source_realtime_skips_frames_when_consumer_is_slow(tiny_clip):
+    """A slow detector must not make the stream fall behind real time: pts stays on the wall clock."""
+    it = iter(ClipSource(tiny_clip, realtime=True))
+    pts_seen = []
+    for _ in range(3):
+        _, pts, _ = next(it)
+        pts_seen.append(pts)
+        time.sleep(0.35)  # 3.5 frames of a 10 fps clip
+    assert pts_seen[1] - pts_seen[0] >= 0.25  # frames were skipped, not replayed one by one
+    assert pts_seen == sorted(pts_seen)
+
+
+def test_source_realtime_slow_consumer_still_covers_whole_clip(tiny_clip):
+    """Skipping stale frames must not make the loop wrap before the clip's real end."""
+    it = iter(ClipSource(tiny_clip, realtime=True))
+    last_pts_loop0 = 0.0
+    for _ in range(40):
+        _, pts, loop = next(it)
+        if loop == 1:
+            break
+        last_pts_loop0 = pts
+        time.sleep(0.17)
+    assert loop == 1
+    assert last_pts_loop0 >= 0.7  # clip ends at 0.9 s; an uncounted read per skip made it wrap early

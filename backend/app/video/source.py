@@ -36,6 +36,13 @@ class ClipSource:
         loop_start = time.perf_counter()
         try:
             while True:
+                if self.realtime:
+                    # a slow consumer must not fall behind the wall clock: skip stale frames
+                    behind = int((time.perf_counter() - (loop_start + index / self.fps)) * self.fps)
+                    for _ in range(behind):
+                        if not cap.grab():
+                            break
+                        index += 1
                 ok, frame = cap.read()
                 if not ok:
                     if index == 0:
