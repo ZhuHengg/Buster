@@ -61,3 +61,33 @@ def test_ingest_mixed_staged_folder_labels_normal_by_subfolder_or_filename(tmp_p
     ingest_folder(root / "staged", "staged", labels, root)
     assert {r.file for r in read_labels(labels)} == {"staged/normal/staged_a_01.mp4",
                                                      "staged/staged_a_02_normal.mp4"}
+
+
+def test_ingest_whole_video_label_snatch_adds_full_span_row(tmp_path: Path, make_video):
+    root = tmp_path / "datasets"
+    make_video(root / "online" / "snatch" / "s1.mp4", seconds=2.0, seed=7)
+    labels = tmp_path / "labels.csv"
+    added = ingest_folder(root / "online" / "snatch", "online", labels, root,
+                          whole_video_label="snatch")
+    rows = read_labels(labels)
+    assert len(added) == 1 and len(rows) == 1
+    assert (rows[0].label, rows[0].start) == ("snatch", 0.0)
+    assert abs(rows[0].end - 2.0) < 0.2
+
+
+def test_ingest_whole_video_label_skips_registered_files(tmp_path: Path, make_video):
+    root = tmp_path / "datasets"
+    make_video(root / "online" / "snatch" / "s1.mp4", seconds=2.0, seed=8)
+    labels = tmp_path / "labels.csv"
+    ingest_folder(root / "online" / "snatch", "online", labels, root, whole_video_label="snatch")
+    first = read_labels(labels)
+    ingest_folder(root / "online" / "snatch", "online", labels, root, whole_video_label="snatch")
+    assert read_labels(labels) == first
+
+
+def test_ingest_whole_video_label_does_not_relabel_normal_folder(tmp_path: Path, make_video):
+    root = tmp_path / "datasets"
+    make_video(root / "online" / "normal" / "n1.mp4", seconds=2.0, seed=9)
+    labels = tmp_path / "labels.csv"
+    ingest_folder(root / "online" / "normal", "online", labels, root, whole_video_label="snatch")
+    assert [r.label for r in read_labels(labels)] == ["normal"]

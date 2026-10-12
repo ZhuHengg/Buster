@@ -10,6 +10,7 @@ one `normal` row. Any other video only has its source_id and phash checked and i
 import argparse
 import hashlib
 from pathlib import Path
+from typing import Literal
 
 from training.labels import (
     DATASETS_DIR, LABELS_PATH, VIDEO_SUFFIXES, LabelRow, read_labels, video_duration, write_labels,
@@ -38,8 +39,9 @@ def is_normal_video(rel: str) -> bool:
 
 def ingest_folder(folder: Path, origin: str, labels_path: Path = LABELS_PATH,
                   root: Path = DATASETS_DIR, angle: str = "unknown",
-                  light: str = "unknown") -> list[LabelRow]:
-    """Returns the rows added."""
+                  light: str = "unknown",
+                  whole_video_label: Literal["snatch", "normal"] | None = None) -> list[LabelRow]:
+    """Returns the rows added. whole_video_label labels every video that is not already normal."""
     folder = Path(folder)
     rows = read_labels(labels_path)
     known_files = {r.file for r in rows}
@@ -61,11 +63,15 @@ def ingest_folder(folder: Path, origin: str, labels_path: Path = LABELS_PATH,
         if near:
             print(f"warning: {rel} looks like a near-duplicate of {near[0]}; "
                   "build_dataset will keep them in one split")
-        if not is_normal_video(rel):
+        if is_normal_video(rel):
+            label = "normal"
+        elif whole_video_label is not None:
+            label = whole_video_label
+        else:
             print(f"needs labelling: {rel} (source_id {source_id})")
             continue
         added.append(LabelRow(source_id=source_id, file=rel, start=0.0, end=video_duration(video),
-                              label="normal", origin=origin, angle=angle, light=light,
+                              label=label, origin=origin, angle=angle, light=light,
                               phash=phash))
         known_sources.add(source_id)
     if added:
@@ -80,10 +86,12 @@ def main() -> None:
     ap.add_argument("--origin", required=True, choices=["ucf", "online", "staged", "feedback"])
     ap.add_argument("--angle", default="unknown", choices=["high", "eye", "unknown"])
     ap.add_argument("--light", default="unknown", choices=["day", "dusk", "night", "unknown"])
+    ap.add_argument("--whole-video-label", choices=["snatch", "normal"], default=None,
+                    help="label each unregistered video as one whole segment (pre-trimmed clips)")
     ap.add_argument("--labels", type=Path, default=LABELS_PATH)
     ap.add_argument("--root", type=Path, default=DATASETS_DIR)
     a = ap.parse_args()
-    ingest_folder(a.folder, a.origin, a.labels, a.root, a.angle, a.light)
+    ingest_folder(a.folder, a.origin, a.labels, a.root, a.angle, a.light, a.whole_video_label)
 
 
 if __name__ == "__main__":
