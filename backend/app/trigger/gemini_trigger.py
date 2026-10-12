@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 WINDOW_S = 3.0
 MAX_WIDTH = 640
 ID_MEMORY_S = 4.0
+MIN_FOOTAGE_S = 1.5  # do not screen a buffer shorter than this: it is not a window of footage yet
 
 
 class GeminiTrigger:
@@ -33,10 +34,12 @@ class GeminiTrigger:
         blocking: bool = False,
         cooldown_s: float = 10.0,
         backoff_s: float = 30.0,
+        min_footage_s: float = MIN_FOOTAGE_S,
     ):
         self.settings, self.camera, self.buffer = settings, camera, buffer
         self.screener = screener or GeminiScreener(settings)
         self.blocking, self.cooldown_s, self.backoff_s = blocking, cooldown_s, backoff_s
+        self.min_footage_s = min_footage_s
         self._executor = None if blocking else ThreadPoolExecutor(max_workers=1, thread_name_prefix="gemini-trigger")
         self._gen = 0
         self.reset()
@@ -73,7 +76,9 @@ class GeminiTrigger:
 
     def _can_request(self, fd: FrameDetections) -> bool:
         return (
-            fd.pts >= self._cooldown_until
+            len(self.buffer) > 0
+            and fd.pts - self.buffer.oldest_pts >= self.min_footage_s
+            and fd.pts >= self._cooldown_until
             and fd.pts >= self._paused_until
             and fd.pts - self._last_request_pts >= self.settings.screen_interval_s
             and any(t.cls == "person" for t in fd.tracks)

@@ -83,16 +83,27 @@ def test_screen_transport_error_raises_screen_unavailable(settings, camera):
         GeminiScreener(settings, client=client_for(fake)).screen(FRAMES, camera)
 
 
-def test_client_is_built_with_an_http_timeout(settings, monkeypatch):
+def _recorded_http_timeout_ms(settings, monkeypatch, **kwargs) -> int:
     seen = {}
 
     class Recorder:
-        def __init__(self, **kwargs):
-            seen.update(kwargs)
+        def __init__(self, **kw):
+            seen.update(kw)
 
     monkeypatch.setattr("app.trigger.gemini_screener.genai.Client", Recorder)
-    GeminiScreener(settings, timeout_s=8.0)
-    assert seen["http_options"].timeout == 8000
+    GeminiScreener(settings, **kwargs)
+    return seen["http_options"].timeout
+
+
+def test_client_is_built_with_an_http_timeout(settings, monkeypatch):
+    assert _recorded_http_timeout_ms(settings, monkeypatch, timeout_s=15.0) == 15000
+
+
+def test_http_timeout_is_never_below_the_api_minimum_deadline(settings, monkeypatch):
+    # the SDK sends the timeout as a server-side deadline and the API answers 400 "Minimum allowed
+    # deadline is 10s" for anything shorter, which made every live screening call fail
+    assert _recorded_http_timeout_ms(settings, monkeypatch) >= 10_000
+    assert _recorded_http_timeout_ms(settings, monkeypatch, timeout_s=3.0) == 10_000
 
 
 def test_screen_api_error_raises_screen_unavailable(settings, camera):

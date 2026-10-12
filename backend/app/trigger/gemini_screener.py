@@ -10,6 +10,9 @@ from app.config import CameraConfig, Settings
 from app.verify.claude_verifier import _strict_schema
 
 
+MIN_DEADLINE_S = 10.0  # the API rejects shorter request deadlines with 400 INVALID_ARGUMENT
+
+
 class ScreenUnavailable(Exception):
     """The screening call failed; the caller should back off, not crash."""
 
@@ -45,13 +48,13 @@ class GeminiScreener:
         self,
         settings: Settings,
         client: genai.Client | None = None,
-        timeout_s: float = 8.0,
+        timeout_s: float = 15.0,
     ):
         self.model = settings.gemini_screen_model or settings.gemini_model
-        self.timeout_s = timeout_s
+        self.timeout_s = max(timeout_s, MIN_DEADLINE_S)
         # the SDK's HTTP timeout is what actually ends a hung request (no stranded worker threads)
         self.client = client or genai.Client(
-            api_key=settings.gemini_api_key, http_options=types.HttpOptions(timeout=int(timeout_s * 1000))
+            api_key=settings.gemini_api_key, http_options=types.HttpOptions(timeout=int(self.timeout_s * 1000))
         )
         self._schema = _strict_schema(ScreenResult)
 

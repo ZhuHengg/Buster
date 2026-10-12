@@ -70,7 +70,8 @@ def feed(trig, buf, frames):
 
 def make(screener, blocking=True, **kw):
     buf = FrameBuffer()
-    return GeminiTrigger(settings(**kw), CAMERA, buf, screener=screener, blocking=blocking), buf
+    # min_footage_s=0: these tests feed tiny scenes and screen from the first frame
+    return GeminiTrigger(settings(**kw), CAMERA, buf, screener=screener, blocking=blocking, min_footage_s=0.0), buf
 
 
 def test_fires_when_screen_positive_blocking():
@@ -225,3 +226,15 @@ def test_live_ids_are_checked_against_the_screened_window_not_the_handling_frame
     assert len(cands) == 1
     c = cands[0]
     assert c.suspect_track_ids == [2] and c.motorcycle_track_id == 5 and c.victim_track_id == 1
+
+
+def test_does_not_screen_until_the_buffer_holds_enough_footage():
+    # at the first frame (or right after a clip loop) the buffer has one frame: keyframes() would send that
+    # single frame six times as a "3 second window", which is not a window of footage at all
+    screener = FakeScreener(result=YES)
+    buf = FrameBuffer()
+    trig = GeminiTrigger(settings(), CAMERA, buf, screener=screener, blocking=True)
+    early = feed(trig, buf, scene(t_end=1.0))
+    assert early == [] and screener.calls == 0
+    later = feed(trig, buf, scene(t_end=3.0, t_start=1.0))
+    assert screener.calls >= 1 and later and later[0].pts >= 1.5
