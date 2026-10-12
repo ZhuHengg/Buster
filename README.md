@@ -12,7 +12,7 @@ Sime Darby Property University Hackathon 2026, Theme 1 (Safety and Security). To
 | Backend (clip source, YOLO + ByteTrack + pose, Rule B, verifiers, incident lifecycle, escalation, REST + WebSocket, replay) | Built, 106 pytest tests pass |
 | Frontend (camera grid with synced boxes, alert card, escalation timeline, incident log) | Built, 43 vitest tests pass, production build OK |
 | Runs end to end with **zero credentials** (mock verifier + dry-run escalator) | Yes: verified in a headless browser |
-| Normal clip produces no alert | Yes (0 events from `debug_rule.py`, and 0 incidents over the 10 minute live run below) |
+| A clip with no snatch produces no alert | **Not tested.** There is no confirmed normal clip: `case-1.mp4` was first assumed normal, but it contains an on-foot snatch (see below). The old "0 alerts over 10 minutes" run was on that clip and means Rule B (motorcycle-only) ignores an on-foot snatch, not that it avoids false alarms. |
 | **Rule B detects the snatch in `case-2.mp4`** | **No.** See "Rule B on the real footage". The snatch never becomes an alert from live detection. |
 | Snatch to alert card within 10 s | **Not measurable**, because no alert is produced from the real clip |
 | Real Claude verification | **Untested against the live API** (no `ANTHROPIC_API_KEY` was available). Tested with a fake client only. |
@@ -29,7 +29,7 @@ Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase2-action-model.md](docs
 | `GeminiScreener`, `GeminiTrigger`, `AnyTrigger`, `make_trigger` (Rule B + Gemini under one cooldown) | Built. Backend tests pass with a fake Gemini client only. |
 | Live Gemini screening, latency, quota | **Run on the two demo clips only** (row below). Two bugs found and fixed on the way: the 8 s SDK deadline is below the API's 10 s minimum (every call failed with 400), and the trigger screened a one-frame buffer at the first frame. No quota or latency numbers yet. |
 | Benchmark on the labelled dataset (`python -m training.bench_screener --split val|test`) | **Not run.** It needs the downloaded dataset in `backend/data/datasets/`, labelled with `training/ingest.py` (use `--whole-video-label snatch` for pre-trimmed clips) and `training/label_tool.py`, and a Gemini key. Results will be added here. |
-| `case-2.mp4` / `case-1.mp4` through the Gemini trigger (2026-10-12, default threshold 0.5, **not tuned**) | **Poor.** `case-2` (snatch at about 6.4 s): the only candidate was at 17.9 s, outside the snatch window, so the snatch is **missed**. `case-1` (normal): **3 false candidates** in 59 s (times differ between runs). Gemini answers vary run to run. Do not tune the prompt or threshold on these clips: pick the threshold on the labelled val split with `training.bench_screener`. |
+| Both demo clips through the Gemini trigger (2026-10-12, default threshold 0.5, **not tuned**, `TRIGGERS=llm`, Gemini verifier, `scripts/benchmark.py --set demo`) | **`case-1` (on-foot snatch at about 12 to 16 s): detected.** Candidate at 14.3 s (2.3 s after the window start), Step 1 call 2.6 s, Gemini verification 3.7 s, plus 0.3 s push: about **8.9 s** to the alert card. One run, so this is one sample, not a median. It also raised 2 more candidates later in the clip (Step 2 removed one, one reached the guard); the window rule counts them as false, and I have not checked whether they are the chase or aftermath. **`case-2` (motorcycle snatch at about 5.4 to 8.4 s): missed.** Its only candidate was at 17.9 s, the aftermath (a bystander walks up to the victim on the ground), and Step 2 confirmed it. Gemini answers vary between runs. Do not tune the prompt or threshold on these clips: pick the threshold on the labelled val split with `training.bench_screener`. |
 
 How it works: every `SCREEN_INTERVAL_S` of video time, while a person is in view, the last 3 s of the camera's frame buffer (6 JPEGs, 640 px wide, with YOLO boxes drawn) go to Gemini on a background thread. A score at or above `SCREEN_THRESHOLD` raises a candidate and the usual Step 2 verification follows. Rate-limit or API errors pause screening for 30 s and never stop the video loop.
 
@@ -46,7 +46,7 @@ Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase3-evidence-scale.md](do
 
 | Area | State |
 |---|---|
-| `scripts/benchmark.py`: the real pipeline run offline over the **test split** of `labels.csv` and, separately, the demo clips, written to `backend/reports/benchmark.json` | Built and tested. Run once with the **mock verifier** on the demo clips (case-2 missed, case-1 clean). **No test-set run and no real-verifier run yet** (no labelled dataset, no API key here), so there are no recall or false-alarm numbers to quote. |
+| `scripts/benchmark.py`: the real pipeline run offline over the **test split** of `labels.csv` and, separately, the demo clips, written to `backend/reports/benchmark.json` | Built and tested. Run once on the two demo clips with the mock verifier and Rule B (both missed: Rule B cannot see an on-foot snatch or the blurred motorcycle), and once with Gemini (row in Phase 2A: case-1 detected, case-2 missed). **No test-set run and no real-verifier run yet** (no labelled dataset, no API key here), so there are no recall or false-alarm numbers to quote. |
 | `scripts/scale_test.py`: N simultaneous camera pipelines per fresh subprocess, stops at the first N that cannot keep up | Built, tested, **run on the real GPU** (below). |
 | `/results` page in the CMS and `GET /api/reports` | Built, tested, checked in headless Chrome. Shows "baseline pending" until `backend/reports/baseline.json` is filled in, and a warning banner when the benchmark used the mock verifier. |
 | `scripts/export_feedback.py`: guard-rejected alerts become `normal` rows in `labels.csv` (origin `feedback`) | Built and tested. No real incident has been rejected yet, so it has exported nothing. |
@@ -161,11 +161,11 @@ case-2.mp4: 30.00 fps, 938x1074, 27.8 s, codec=h264, h264=True
 - `exits` maps the image direction the motorcycle leaves toward to a gate name, `compass` maps it to a compass word. Both feed the alert card, the call script and the SMS.
 - Add footage by copying an H.264 `.mp4` into `backend/data/` and pointing a camera at it. Restart the backend.
 
-Current assignment: `case-2.mp4` on CAM-02 (the snatch) and `case-1.mp4` on CAM-07 (normal street). The other seven tiles have no clip yet.
+Current assignment: `case-2.mp4` on CAM-02 (the snatch) and `case-1.mp4` on CAM-07 (an on-foot bag snatch at about 12 to 16 s, no motorcycle: a man in black runs up behind a woman, grabs her bag, she falls, he runs off). The other seven tiles have no clip yet. Neither demo clip is a normal clip.
 
 ### TODO-USER (not answered in the request, so assumed)
 
-- The request left the clip labels and the escape direction as blank template brackets. The assignment above was **inferred from the footage**: `case-2.mp4` shows a bag snatch (victim falls, bike flees toward the image right), `case-1.mp4` shows an ordinary street with parked motorcycles. Please confirm.
+- The request left the clip labels and the escape direction as blank template brackets. The assignment above was **inferred from the footage**: `case-2.mp4` shows a bag snatch (victim falls, bike flees toward the image right), `case-1.mp4` was first read as an ordinary street, and the user corrected that on 2026-10-12: it is a snatch too. The snatch window in `cameras.json` (CAM-07: 12 to 16 s, CAM-02: 5.4 to 8.4 s) is from watching the clips; please confirm the times.
 - Gate name for the escape direction: `Gate B` is a placeholder in `cameras.json` (right of the image is the observed direction). Replace it with the real gate.
 - `data/mock_verifications/CAM-02.json` (the no-key verification text) was written from watching the clip, not from a model.
 
@@ -187,7 +187,7 @@ Replay re-injects each precomputed candidate once per clip loop and shows its st
 
 `backend/scripts/debug_rule.py data/<clip>.mp4` runs the detector and rule offline and prints each event plus per-second contact, grab and getaway flags. Result with the plan's default `SnatchParams`:
 
-- `case-1.mp4` (normal): 0 events. Contact flags appear near the parked bikes, never a getaway.
+- `case-1.mp4` (an on-foot snatch at about 12 to 16 s): 0 events. Expected: Rule B needs a motorcycle in contact, so it cannot see a snatch by a person on foot. The Gemini screener has no such limit.
 - `case-2.mp4` (snatch): **0 events.** The motorcycle is small, motion-blurred and heavily compressed (a news re-encode). YOLO11 s, m and x (imgsz 640 and 1280) see it in only 13 to 18 of the 91 frames around the snatch (5.4 to 8.4 s), and almost never after the grab, so no stable motorcycle track forms. Lowering the motorcycle confidence to 0.05, a lower-threshold ByteTrack config, `min_track_frames` 2 to 3 and `proximity_ratio` up to 2.2 did not produce a contact, grab, getaway chain.
 - At very low confidence the bike's path is visible (it leaves toward the image right and slightly up), so a detector trained on this footage, or the Phase 2 VideoMAE trigger, should close the gap. The `Trigger` protocol in `backend/app/trigger/base.py` is where it plugs in. The rule logic itself is covered by synthetic-scene tests (contact, grab by wrist or jerk, getaway, cooldown, loop wrap).
 
@@ -201,7 +201,7 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 | Frontend tests | 54 passed, production build OK |
 | Snatch to alert card (spec: 10 s or less), 3 runs | Not measurable: no alert is produced from the snatch clip (see above). Pipeline stage timings are recorded per incident (`metrics`: `candidate_s`, `verified_s`, `shown_s`, `call_placed_s`, seconds since detection) and shown on the Incidents page. |
 | Approval to phone ringing (spec: 5 s or less) | Dry-run escalator: ringing is emitted 0.5 s after approval. Real Twilio timing not measured. |
-| False alarms on the normal clip, live mode, 10 min 23 s (about 10 loops of `case-1.mp4`, both cameras analysed) | 0 incidents of any status (0 PENDING_REVIEW, 0 AI_REJECTED, 0 CANDIDATE), 0 pipeline errors. Caveat: the rule also produces nothing on the snatch clip, so this is a negative control, not evidence of discrimination. |
+| Live run, 10 min 23 s (about 10 loops of `case-1.mp4`, both cameras analysed, Rule B only) | 0 incidents and 0 pipeline errors, so the pipeline is stable. **This is not a false-alarm result:** `case-1.mp4` contains a snatch (on foot), which Rule B cannot see. There is still no run on genuinely normal footage. |
 | Replay mode vs live | Same message types and fields (`camera.sync`, `detections`, `incident.updated`). Replay emits every frame (about 30 per second per camera), live about 9 to 14. Precomputed: CAM-07 1776 frames, CAM-02 833 frames, 0 candidates each. |
 
 ## Known issues

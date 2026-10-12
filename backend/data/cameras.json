@@ -70,6 +70,10 @@
     "location": "Elmina Central, Row B rear lane",
     "clip": "case-1.mp4",
     "analyse": true,
+    "expected_event": {
+      "start": 12.0,
+      "end": 16.0
+    },
     "exits": {},
     "compass": {
       "up": "north",
