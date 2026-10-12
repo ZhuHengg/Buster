@@ -1,3 +1,5 @@
+import pytest
+
 from app.trigger.snatch_rule import SnatchParams, SnatchRule
 from tests.trigger.conftest import Ent, make_scene, snatch_entities
 
@@ -90,3 +92,14 @@ def test_rider_not_treated_as_victim():
         Ent(3, "person", lambda t: (200 + 300 * t, 500), (40, 80), wrist=lambda t: (200 + 300 * t + 30, 500.0)),
     ]
     assert run(SnatchRule(), make_scene(ents, t_end=6.0)) == []
+
+
+@pytest.mark.parametrize("with_pose,with_jerk", [(True, False), (False, True)])
+def test_rule_b_detects_at_analyse_fps_10_as_fast_as_at_full_rate(with_pose, with_jerk):
+    """Characterisation for `analyse_fps=10`: a 30 fps scene analysed on every 3rd frame still fires,
+    on either evidence path, within a frame or two of the full-rate detection. (Measured: below 10 fps the
+    pose path starts missing the 0.5 s wrist-reach window; the jerk path holds down to about 5 fps.)"""
+    scene = make_scene(snatch_entities(with_pose=with_pose, with_jerk=with_jerk), t_end=8.0, fps=30)
+    full, sampled = run(SnatchRule(), scene), run(SnatchRule(), scene[::3])
+    assert len(full) == 1 and len(sampled) == 1
+    assert abs(sampled[0].pts - full[0].pts) <= 0.2

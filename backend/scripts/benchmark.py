@@ -11,12 +11,10 @@ Step 1 call (the blocking Gemini round trip); verification is wall time; the UI 
 import argparse
 import asyncio
 import json
-import subprocess
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +30,7 @@ from app.verify.base import VerificationUnavailable, Verifier  # noqa: E402
 from app.verify.mock_verifier import MockVerifier, make_verifier  # noqa: E402
 from app.video.buffer import FrameBuffer  # noqa: E402
 from app.video.source import ClipSource  # noqa: E402
+from scripts.report_meta import git_commit, utc_now  # noqa: E402
 from training.events import wilson_interval  # noqa: E402
 
 REPORTS_DIR = BACKEND_DIR / "reports"
@@ -150,6 +149,7 @@ def aggregate(results: list[SourceResult]) -> dict:
     lats = [lat for r in results for lat in r.latencies]
     e2c = [lat["event_to_candidate_s"] for lat in lats]
     c2v = [lat["candidate_to_verified_s"] for lat in lats]
+    wall = [lat["step1_wall_s"] for lat in lats]
     total = [lat["event_to_candidate_s"] + lat["step1_wall_s"] + lat["candidate_to_verified_s"] + PUSH_S for lat in lats]
     return {
         "sources": len(results),
@@ -168,6 +168,8 @@ def aggregate(results: list[SourceResult]) -> dict:
         "verify_errors": sum(r.verify_errors for r in results),
         "event_to_candidate_p50_s": _pct(e2c, 50),
         "event_to_candidate_p90_s": _pct(e2c, 90),
+        "step1_wall_p50_s": _pct(wall, 50),
+        "step1_wall_p90_s": _pct(wall, 90),
         "candidate_to_verified_p50_s": _pct(c2v, 50),
         "candidate_to_verified_p90_s": _pct(c2v, 90),
         "push_s": PUSH_S,
@@ -181,22 +183,12 @@ def verifier_kind(verifier: Verifier) -> str:
     return {"MockVerifier": "mock", "ClaudeVerifier": "claude", "GeminiVerifier": "gemini"}.get(name, name.lower())
 
 
-def _git(*args: str) -> str:
-    try:
-        return subprocess.run(["git", *args], cwd=BACKEND_DIR, capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
-
-
 def build_meta(settings: Settings, verifier: Verifier, threshold: float | None, sources: list[str], clips: list[str]) -> dict:
     """Everything needed to reproduce the run. `verifier` == "mock" marks the numbers as not valid evidence."""
     kind = verifier_kind(verifier)
-    commit = _git("rev-parse", "HEAD") or "unknown"
-    if _git("status", "--porcelain", "--untracked-files=no"):
-        commit += "-dirty"
     return {
-        "commit": commit,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "commit": git_commit(),
+        "generated_at": utc_now(),
         "triggers": settings.triggers,
         "verifier": kind,
         "model": {"claude": settings.claude_model, "gemini": settings.gemini_model}.get(kind),

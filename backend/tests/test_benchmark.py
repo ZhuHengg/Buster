@@ -132,6 +132,7 @@ def test_latency_percentiles():
     assert agg["event_to_candidate_p50_s"] == pytest.approx(3.0)
     assert agg["event_to_candidate_p90_s"] == pytest.approx(4.6)
     assert agg["candidate_to_verified_p50_s"] == pytest.approx(1.0)
+    assert agg["step1_wall_p50_s"] == pytest.approx(0.5) and agg["step1_wall_p90_s"] == pytest.approx(0.5)
     # detection -> card = event->candidate + step-1 wall time + verification + UI push
     assert agg["detection_to_card_p50_s"] == pytest.approx(3.0 + 0.5 + 1.0 + PUSH_S)
     assert PUSH_S == 0.3
@@ -140,6 +141,7 @@ def test_latency_percentiles():
 def test_latency_none_without_cards():
     agg = aggregate([result(events=1)])
     assert agg["detection_to_card_p50_s"] is None and agg["event_to_candidate_p90_s"] is None
+    assert agg["step1_wall_p50_s"] is None
 
 
 # ---- meta ------------------------------------------------------------------------------------

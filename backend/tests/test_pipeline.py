@@ -40,8 +40,10 @@ class FakeDetector:
 
     def __init__(self):
         self.resets = 0
+        self.calls = 0
 
     def process(self, frame, camera_id, pts, loop) -> FrameDetections:
+        self.calls += 1
         tracks = [
             Track(id=1, cls="person", bbox=(20.0, 20.0, 70.0, 180.0), conf=0.9),
             Track(id=2, cls="motorcycle", bbox=(100.0, 100.0, 190.0, 190.0), conf=0.9),
@@ -107,9 +109,9 @@ def service(tmp_path: Path, hub: FakeHub) -> IncidentService:
     return IncidentService(IncidentStore(tmp_path / "i.db"), tmp_path / "snaps", on_change)
 
 
-def make_pipeline(camera, tmp_path, service, hub, source, trigger=None, verifier=None, detector=None):
+def make_pipeline(camera, tmp_path, service, hub, source, trigger=None, verifier=None, detector=None, **settings):
     return CameraPipeline(
-        camera, Settings(_env_file=None, data_dir=tmp_path), detector or FakeDetector(),
+        camera, Settings(_env_file=None, data_dir=tmp_path, **settings), detector or FakeDetector(),
         trigger or FakeTrigger(), verifier or MockVerifier(tmp_path / "none"), service, hub, FrameBuffer(),
         source=source,
     )
@@ -171,6 +173,30 @@ async def test_pipeline_suspect_flags_cleared_after_loop_change(camera, tmp_path
     loop1 = [d for d in dets if d["loop"] == 1]
     assert any(t["suspect"] for d in dets if d["loop"] == 0 for t in d["tracks"])
     assert not any(t["suspect"] for t in loop1[0]["tracks"])  # track IDs restart on wrap: flags must too
+
+
+async def test_analyse_fps_skips_frames(camera, tmp_path, service, hub):
+    det, trig = FakeDetector(), FakeTrigger(fire_on_call=None)
+    pipe = make_pipeline(camera, tmp_path, service, hub, make_source(30, fps=30), trigger=trig, detector=det,
+                         analyse_fps=10.0)
+    await pipe.run()
+    assert det.calls == 10 and trig.calls == 10  # every 3rd frame of a 30 fps source
+    assert len(pipe.buffer) == 30  # skipped frames are still buffered, so keyframes stay smooth
+    assert len(hub.of_type("detections")) == 10
+    assert [round(d["pts"], 3) for d in hub.of_type("detections")][:3] == [0.0, 0.1, 0.2]
+
+
+async def test_analyse_fps_none_analyses_every_frame(camera, tmp_path, service, hub):
+    det = FakeDetector()
+    await make_pipeline(camera, tmp_path, service, hub, make_source(30, fps=30), detector=det).run()
+    assert det.calls == 30
+
+
+async def test_analyse_fps_restarts_at_loop_wrap(camera, tmp_path, service, hub):
+    det = FakeDetector()
+    await make_pipeline(camera, tmp_path, service, hub, make_source(6, fps=30, loops=(0, 1)),
+                        trigger=FakeTrigger(fire_on_call=None), detector=det, analyse_fps=10.0).run()
+    assert det.calls == 4  # frames 0 and 3 of each loop; pts restarts at 0 so loop 1 is analysed again
 
 
 # ---- replay ------------------------------------------------------------------------------

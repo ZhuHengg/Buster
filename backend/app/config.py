@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     screen_frames: int = 6
     screen_max_lag_s: float = 6.0
     triggers: Literal["rule", "llm", "both"] = "both"
+    analyse_fps: float | None = None  # detect at most this many frames/s per camera; None = every frame
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
     operator_name: str = "CMS Operator 1"
     data_dir: Path = DATA_DIR
     db_path: Path = DATA_DIR / "incidents.db"
+    reports_dir: Path = BACKEND_DIR / "reports"
 
 
 class ExpectedEvent(BaseModel):

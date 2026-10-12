@@ -89,6 +89,15 @@ class CameraPipeline:
         self._recent: deque[FrameDetections] = deque(maxlen=200)
         self._suspects: set[int] = set()
         self._tasks = _TaskSet()
+        self._last_analysed_pts: float | None = None
+        self._last_fd: FrameDetections | None = None
+
+    def _due(self, pts: float) -> bool:
+        """True when this frame should be analysed: at most `analyse_fps` per second of clip time."""
+        fps = self.settings.analyse_fps
+        if not fps or self._last_analysed_pts is None:
+            return True
+        return pts - self._last_analysed_pts >= 1.0 / fps - 1e-6
 
     async def run(self) -> None:
         source = self.source
@@ -108,7 +117,12 @@ class CameraPipeline:
                     last_sync_sec = None
                 last_loop = loop
 
+                if not self._due(pts) and self._last_fd is not None:
+                    # skipped: buffered with the last boxes so keyframes stay smooth, but not analysed
+                    self.buffer.push(pts, loop, frame, self._last_fd.model_copy(update={"pts": pts}))
+                    continue
                 fd = await asyncio.to_thread(self.detector.process, frame, self.camera.id, pts, loop)
+                self._last_analysed_pts, self._last_fd = pts, fd
                 self.buffer.push(pts, loop, frame, fd)
                 self._recent.append(fd)
                 await self.hub.broadcast(detections_msg(fd, self._suspects))
@@ -131,6 +145,7 @@ class CameraPipeline:
         self.buffer.clear()
         self._recent.clear()
         self._suspects.clear()  # track IDs restart with the loop
+        self._last_analysed_pts = self._last_fd = None  # pts restarts at 0
 
     async def _on_candidate(self, candidate: CandidateEvent) -> None:
         keyframes = self.buffer.keyframes(candidate.pts, n=8, span=3.0)
