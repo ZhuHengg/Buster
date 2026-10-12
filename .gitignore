@@ -20,3 +20,6 @@ backend/models/*
 backend/models/action/*
 !backend/models/action/*.json
 !backend/models/action/*.md
+
+# Gemini screener benchmark cache (paid-call results)
+backend/reports/*.jsonl
