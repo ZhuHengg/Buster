@@ -197,8 +197,8 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 
 | Check | Result |
 |---|---|
-| Backend tests | 241 passed (Phase 1: 106, Phase 2A: 196) |
-| Frontend tests | 53 passed, production build OK |
+| Backend tests | 246 passed (Phase 1: 106, Phase 2A: 196) |
+| Frontend tests | 54 passed, production build OK |
 | Snatch to alert card (spec: 10 s or less), 3 runs | Not measurable: no alert is produced from the snatch clip (see above). Pipeline stage timings are recorded per incident (`metrics`: `candidate_s`, `verified_s`, `shown_s`, `call_placed_s`, seconds since detection) and shown on the Incidents page. |
 | Approval to phone ringing (spec: 5 s or less) | Dry-run escalator: ringing is emitted 0.5 s after approval. Real Twilio timing not measured. |
 | False alarms on the normal clip, live mode, 10 min 23 s (about 10 loops of `case-1.mp4`, both cameras analysed) | 0 incidents of any status (0 PENDING_REVIEW, 0 AI_REJECTED, 0 CANDIDATE), 0 pipeline errors. Caveat: the rule also produces nothing on the snatch clip, so this is a negative control, not evidence of discrimination. |
