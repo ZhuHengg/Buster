@@ -18,6 +18,8 @@ dependencies = [
     "imageio-ffmpeg",
     "torch",
     "torchvision",
+    "transformers>=5.19.0",
+    "scikit-learn>=1.9.1",
 ]
 
 [dependency-groups]
