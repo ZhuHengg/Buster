@@ -9,6 +9,7 @@ from app.models import (
 )
 from app.verify.base import Verifier
 from app.verify.claude_verifier import ClaudeVerifier
+from app.verify.gemini_verifier import GeminiVerifier
 
 
 class MockVerifier:
@@ -40,6 +41,8 @@ class MockVerifier:
 
 
 def make_verifier(settings: Settings) -> Verifier:
+    if settings.gemini_api_key:
+        return GeminiVerifier(settings)
     if settings.anthropic_api_key:
         return ClaudeVerifier(settings)
     return MockVerifier(settings.data_dir / "mock_verifications")

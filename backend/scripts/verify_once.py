@@ -1,7 +1,7 @@
-"""Grab 8 keyframes around a timestamp, call ClaudeVerifier once, print the JSON and latency.
+"""Grab 8 keyframes around a timestamp, call the verifier once, print the JSON and latency.
 
 Usage: uv run python scripts/verify_once.py data/case-2.mp4 6.4 [--camera CAM-02]
-Needs ANTHROPIC_API_KEY (in backend/.env or the environment).
+Needs GEMINI_API_KEY (preferred) or ANTHROPIC_API_KEY, in backend/.env or the environment.
 """
 import argparse
 import asyncio
@@ -17,6 +17,7 @@ import cv2  # noqa: E402
 from app.config import DATA_DIR, Settings, load_cameras  # noqa: E402
 from app.models import CandidateEvent  # noqa: E402
 from app.verify.claude_verifier import ClaudeVerifier  # noqa: E402
+from app.verify.gemini_verifier import GeminiVerifier  # noqa: E402
 
 
 async def main() -> int:
@@ -27,8 +28,12 @@ async def main() -> int:
     args = ap.parse_args()
 
     settings = Settings()
-    if not settings.anthropic_api_key:
-        print("ANTHROPIC_API_KEY is not set")
+    if settings.gemini_api_key:
+        verifier = GeminiVerifier(settings)
+    elif settings.anthropic_api_key:
+        verifier = ClaudeVerifier(settings)
+    else:
+        print("GEMINI_API_KEY or ANTHROPIC_API_KEY must be set")
         return 1
     cameras = load_cameras(DATA_DIR / "cameras.json")
     camera = next(
@@ -55,7 +60,7 @@ async def main() -> int:
         detected_at=datetime.now(timezone.utc),
     )
     t0 = time.perf_counter()
-    result = await ClaudeVerifier(settings).verify(candidate, frames, camera)
+    result = await verifier.verify(candidate, frames, camera)
     print(result.model_dump_json(indent=2))
     print(f"latency: {time.perf_counter() - t0:.1f}s")
     return 0

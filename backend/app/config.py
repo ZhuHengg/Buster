@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None

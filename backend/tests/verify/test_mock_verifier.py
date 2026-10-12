@@ -26,12 +26,20 @@ async def test_mock_verifier_default_is_snatch_theft(tmp_path, camera, candidate
 def test_make_verifier_without_key_returns_mock(tmp_path):
     from app.config import Settings
 
-    s = Settings(_env_file=None, anthropic_api_key=None, data_dir=tmp_path)
+    s = Settings(_env_file=None, anthropic_api_key=None, gemini_api_key=None, data_dir=tmp_path)
     assert isinstance(make_verifier(s), MockVerifier)
 
 
 def test_make_verifier_with_key_returns_claude(tmp_path):
     from app.config import Settings
 
-    s = Settings(_env_file=None, anthropic_api_key="k", data_dir=tmp_path)
+    s = Settings(_env_file=None, anthropic_api_key="k", gemini_api_key=None, data_dir=tmp_path)
     assert isinstance(make_verifier(s), ClaudeVerifier)
+
+
+def test_make_verifier_prefers_gemini(tmp_path):
+    from app.config import Settings
+    from app.verify.gemini_verifier import GeminiVerifier
+
+    s = Settings(_env_file=None, anthropic_api_key="k", gemini_api_key="g", data_dir=tmp_path)
+    assert isinstance(make_verifier(s), GeminiVerifier)
