@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     screen_interval_s: float = 3.0
     screen_frames: int = 6
     screen_max_lag_s: float = 6.0
+    triggers: Literal["rule", "llm", "both"] = "both"
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None

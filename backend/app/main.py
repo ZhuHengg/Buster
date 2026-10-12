@@ -59,7 +59,7 @@ async def _supervise(name: str, coro) -> None:
 
 async def _build_pipelines(app: FastAPI) -> list:
     from app.pipeline import CameraPipeline, ReplayPipeline
-    from app.trigger.snatch_rule import SnatchRule
+    from app.trigger import make_trigger
     from app.video.buffer import FrameBuffer
 
     settings: Settings = app.state.settings
@@ -77,10 +77,11 @@ async def _build_pipelines(app: FastAPI) -> list:
             from app.detect.detector import Detector
 
             detector = await asyncio.to_thread(Detector)  # one tracker state per stream
+            buffer = FrameBuffer()  # shared: the pipeline fills it, the Gemini trigger reads it
             pipelines.append(
                 CameraPipeline(
-                    cam, settings, detector, SnatchRule(), app.state.verifier, app.state.service,
-                    app.state.hub, FrameBuffer(),
+                    cam, settings, detector, make_trigger(settings, cam, buffer), app.state.verifier,
+                    app.state.service, app.state.hub, buffer,
                 )
             )
     return pipelines

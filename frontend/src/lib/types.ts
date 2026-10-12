@@ -69,7 +69,7 @@ export interface CandidateEvent {
   camera_id: string;
   pts: number;
   loop: number;
-  trigger: "rule" | "model";
+  trigger: "rule" | "model" | "llm";
   suspect_track_ids: number[];
   victim_track_id: number | null;
   motorcycle_track_id: number | null;

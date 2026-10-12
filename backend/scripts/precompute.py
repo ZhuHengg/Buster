@@ -18,7 +18,7 @@ from app.config import DATA_DIR, Settings, load_cameras  # noqa: E402
 from app.detect.detector import Detector  # noqa: E402
 from app.models import CandidateEvent  # noqa: E402
 from app.trigger.direction import escape_direction  # noqa: E402
-from app.trigger.snatch_rule import SnatchRule  # noqa: E402
+from app.trigger import make_trigger  # noqa: E402
 from app.verify.base import VerificationUnavailable  # noqa: E402
 from app.verify.mock_verifier import make_verifier  # noqa: E402
 from app.video.buffer import FrameBuffer  # noqa: E402
@@ -38,7 +38,8 @@ async def main() -> int:
         return 1
 
     source = ClipSource(settings.data_dir / camera.clip, realtime=False)
-    detector, rule, buffer, verifier = Detector(), SnatchRule(), FrameBuffer(), make_verifier(settings)
+    detector, buffer, verifier = Detector(), FrameBuffer(), make_verifier(settings)
+    trigger = make_trigger(settings, camera, buffer, blocking=True)  # offline: video time outruns wall time
     out_dir = settings.data_dir / "precomputed"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,7 +53,7 @@ async def main() -> int:
         buffer.push(pts, loop, frame, fd)
         recent.append(fd)
         frames.append(fd.model_dump(mode="json", exclude={"tracks": {"__all__": {"keypoints"}}}))
-        event: CandidateEvent | None = rule.update(fd)
+        event: CandidateEvent | None = trigger.update(fd)
         if event is None:
             continue
         for track_id in event.suspect_track_ids:

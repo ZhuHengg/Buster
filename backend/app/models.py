@@ -26,7 +26,7 @@ class CandidateEvent(BaseModel):
     camera_id: str
     pts: float
     loop: int
-    trigger: Literal["rule", "model"]
+    trigger: Literal["rule", "model", "llm"]
     suspect_track_ids: list[int]
     victim_track_id: int | None = None
     motorcycle_track_id: int | None = None
