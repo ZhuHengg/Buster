@@ -58,3 +58,11 @@ def test_settings_defaults_without_env(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert s.anthropic_api_key is None
     assert s.operator_name == "CMS Operator 1"
     assert s.db_path.name == "incidents.db"
+
+
+def test_expected_event_defaults_to_none_and_parses(tmp_path: Path):
+    plain = _cam("CAM-01", None, False)
+    snatch = {**_cam("CAM-02", None, False), "expected_event": {"start": 5.4, "end": 8.4}}
+    cams = load_cameras(_write(tmp_path, [plain, snatch]))
+    assert cams[0].expected_event is None
+    assert (cams[1].expected_event.start, cams[1].expected_event.end) == (5.4, 8.4)

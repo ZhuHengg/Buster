@@ -14,6 +14,10 @@
     "location": "Elmina Central, Row B",
     "clip": "case-2.mp4",
     "analyse": true,
+    "expected_event": {
+      "start": 5.4,
+      "end": 8.4
+    },
     "exits": {
       "right": "Gate B"
     },

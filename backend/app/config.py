@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     db_path: Path = DATA_DIR / "incidents.db"
 
 
+class ExpectedEvent(BaseModel):
+    """Where a demo clip's snatch is, in clip seconds. Used only by the benchmark."""
+
+    start: float
+    end: float
+
+
 class CameraConfig(BaseModel):
     id: str
     name: str
@@ -45,6 +52,7 @@ class CameraConfig(BaseModel):
     analyse: bool = False
     exits: dict[Direction, str] = {}
     compass: dict[Direction, str] = {}
+    expected_event: ExpectedEvent | None = None  # None: a normal clip (any candidate is a false alarm)
 
 
 def load_cameras(path: Path) -> list[CameraConfig]:
