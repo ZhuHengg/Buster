@@ -1,34 +1,40 @@
-# Proactive CCTV Alert System: Phase 2 Implementation Plan (Action Model)
+# Proactive CCTV Alert System: Phase 2 Implementation Plan (Gemini Step 1, then Action Model)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Train a video action model that tells motorcycle snatch theft from normal street activity, and plug it into the pipeline as a second Step 1 trigger. It fires alongside Rule B (either one can raise a candidate), so Step 1 misses fewer events.
+**Goal:** Add a second Step 1 trigger that needs no training: Gemini Flash screens recent frames and raises a candidate when it sees a possible snatch. Measure it on the downloaded dataset. The VideoMAE action model (Part B) is kept as a deferred follow-up that reuses the same dataset, splits and metrics.
 
-**Architecture:** An offline training workspace in `backend/training/` turns raw videos into labelled segments, then into fixed 16-frame windows split by source video, then fine-tunes VideoMAE-base, then picks a threshold on the validation split and evaluates on the test split. The trained model is saved to `backend/models/action/`. At runtime, `ActionModelTrigger` implements the Phase 1 `Trigger` protocol on a sliding window of frames, and `AnyTrigger` combines it with `SnatchRule` under one shared cooldown.
+**Architecture:** Part A: `GeminiScreener` (frames → `ScreenResult`) is wrapped by `GeminiTrigger`, a `Trigger` that reads frames from the existing `FrameBuffer` and never blocks the video loop. `AnyTrigger` combines it with Rule B under one cooldown. The labelled dataset becomes a benchmark: `bench_screener.py` runs the screener over held-out videos and reports event recall and false triggers per hour. Part B (later): the same dataset trains VideoMAE, and `ActionModelTrigger` plugs into `AnyTrigger` next to the other two.
 
-**Tech Stack:** Phase 1 stack plus Hugging Face `transformers` (VideoMAE), `scikit-learn` (metrics), OpenCV (frame decoding, labelling tool).
+**Tech Stack:** Phase 1 stack plus `google-genai` (already added with the Gemini verifier). Part B adds Hugging Face `transformers` (VideoMAE) and `scikit-learn`.
 
-**Spec:** `docs/SOLUTION_PLAN.md` §6.3 A and §7. **Depends on:** Phase 1 complete (`docs/superpowers/plans/2026-10-11-cctv-alert-phase1.md`), especially `Trigger`, `FrameDetections`, `CandidateEvent`, `Detector`, `SnatchRule`, `scripts/precompute.py`.
+**Spec:** `docs/SOLUTION_PLAN.md` §6.3 and §7. **Depends on:** Phase 1 complete, especially `Trigger`, `FrameBuffer`, `FrameDetections`, `CandidateEvent`, `CameraPipeline`, `scripts/precompute.py`, and the Gemini verifier (`app/verify/gemini_verifier.py`, `Settings.gemini_api_key`, `Settings.gemini_model`).
 
 ## Global Constraints
 
 - All Phase 1 global constraints still apply (Python 3.12 via uv, Windows paths, no face recognition, nothing escalates without guard approval, zero-credential run).
-- **Demo clips are never used for training, validation or testing selection.** Every clip referenced in `backend/data/cameras.json` is excluded automatically. The dataset build fails if one appears.
-- **Split by source video, never by window.** No source video may contribute windows to more than one split.
-- Window: **16 frames sampled evenly over 2.0 s**, resized to the shorter side 224 then centre-cropped to 224×224 (at inference, the crop follows Task 5's region rule).
-- Model: `MCG-NJU/videomae-base-finetuned-kinetics`, with the head replaced for 2 labels `["normal", "snatch"]`. Fallback if VideoMAE won't train on the RTX 3080 (16 GB) at batch size ≥ 2 with fp16: torchvision `r2plus1d_18` (Kinetics weights). The spec names X3D-S, but that needs the unmaintained `pytorchvideo`; r2plus1d_18 is the substitute.
-- Held-out targets (spec §7): **event recall ≥ 0.90** on test snatch events; **0 alerts after Step 2** on the normal demo clips (checked in Task 6).
-- Runtime latency: the model trigger must keep Step 1 at **≤ 2 s** after the snatch, while YOLO runs on the same GPU.
-- Datasets and models are git-ignored (`backend/data/datasets/`, `backend/data/windows/`, `backend/models/`). Only scripts, `labels.csv` and metrics JSON are committed.
-- Online clips are for training and testing only. Respect platform terms; do not commit them.
+- **Zero-credential run still works:** with no `GEMINI_API_KEY`, `make_trigger` returns Rule B only and logs one warning.
+- **Demo clips are never used for training, validation, threshold selection or benchmarking.** Every clip referenced in `backend/data/cameras.json` is excluded by name and by phash. `case-1` and `case-2` are only run in Task A5, after the threshold is frozen.
+- **Split by source video, never by clip or window.** No source video may appear in more than one split.
+- **The live trigger must not block the video loop.** A Gemini call runs on a background thread; the loop only polls the result. Results older than `screen_max_lag_s` are discarded.
+- **Step 1 is allowed to be wrong; Step 2 is the precision filter.** The screener prompt asks for high recall.
+- **Latency budget changes:** snatch → alert card stays **≤ 10 s**. Step 1 is relaxed from ≤ 2 s to **≤ 4 s** because one Gemini round trip plus the screening interval cannot meet 2 s; Step 2 stays ≤ 6 s. Measured in Task A5, reported honestly if missed.
+- Screener images: JPEG, **max width 640 px**, `screen_frames = 6` frames over the last 3.0 s.
+- Targets on the held-out benchmark (spec §7, §8): **event recall ≥ 0.90** and a stated false-trigger rate per hour of normal footage. With small N these are indicative only, and the report must show the counts and a 95% Wilson interval.
+- Datasets, windows, models and benchmark caches are git-ignored (`backend/data/datasets/`, `backend/data/windows/`, `backend/models/`, `backend/reports/*.jsonl`). Only scripts, `labels.csv` and metrics JSON are committed.
+- Online clips are for training and testing only. Respect each dataset's license and platform terms; do not commit them.
+- **API quota is a real limit.** One camera at the default 3 s interval is 20 calls/minute, plus Step 2. Check your key's rate limits before running with more than one analysed camera. Defaults must be safe for a free-tier key; the failure behaviour (backoff, not crash) is tested.
 
 ## Review Focus
 
-1. **Leakage between splits:** two downloads of the same viral video under different file names would inflate test results. The dataset build must flag near-duplicate sources by perceptual hash of the first frames. Test in Task 2.
-2. **Label segments shorter than one window, or videos shorter than 2 s:** these must be skipped with a warning, not crash the build or produce padded garbage windows. Test in Task 2.
-3. **Class imbalance:** normal footage will outnumber snatch windows about 10:1. Training must weight classes, and evaluation must report per-class numbers, not just accuracy. Test in Task 3 and Task 4.
-4. **GPU contention at runtime:** if the model inference falls behind real time, it must drop old windows rather than queue them. Stale alerts minutes late are worse than none. Test in Task 5.
-5. **Both triggers fire for the same event:** this must create exactly one candidate, with the shared cooldown applied. Test in Task 5.
+1. **Gemini unreachable, rate-limited (429), blocked or returns junk:** the video loop keeps running, Rule B still works, and screening pauses for 30 s before retrying. Test in Task A3.
+2. **Stale result after the clip loops:** a result computed for the previous loop must not raise a candidate in the new loop. Test in Task A3.
+3. **Rule B and Gemini both fire for one snatch:** exactly one candidate, one incident, shared cooldown. Test in Task A3.
+4. **Candidate with no track IDs:** Gemini may see a snatch that YOLO tracked poorly (this is the case-2 situation). The incident must still open and reach the guard; missing snapshots and escape direction must not crash anything. Test in Task A3.
+5. **Hallucinated track IDs:** Gemini returns an ID that never existed. It is dropped, not stored. Test in Task A3.
+6. **Benchmark cost and reruns:** a benchmark that silently makes thousands of paid calls, or repeats them when only the threshold changed. Cost estimate and cap before running, and a cache so reruns are free. Test in Task A4.
+7. **Near-duplicate videos across splits:** the same viral clip under two names inflates recall. Group by phash before splitting. Test in Task A4.
+8. **Bench vs live mismatch:** the benchmark has no YOLO boxes drawn on frames, the live pipeline does. The prompt must work with or without boxes; Task A5 re-checks on the live pipeline.
 
 ---
 
@@ -36,220 +42,289 @@
 
 ```
 backend/
-  training/
-    __init__.py
-    labels.py           LabelRow model, read/write labels.csv, validation
-    label_tool.py       OpenCV labelling tool (CLI)
-    ingest.py           register raw videos into labels.csv (origin, source_id, hash)
-    windows.py          window sampling + preprocessing (shared by training AND runtime)
-    build_dataset.py    labels → split → windows/*.npy + index.parquet/csv
-    dataset.py          torch Dataset over windows + augmentations
-    train.py            fine-tune loop (VideoMAE or r2plus1d_18)
-    evaluate.py         window + event metrics, threshold selection
-  app/trigger/action_model.py   ActionModelTrigger
-  app/trigger/any_trigger.py    AnyTrigger
-  data/labels.csv               committed
-  models/action/                model files + threshold.json + metrics.json (git-ignored except the JSON)
-  tests/training/...            tests for labels, windows, build_dataset, evaluate
-  tests/trigger/test_action_model.py, test_any_trigger.py
-docs/FILMING_GUIDE.md           shot list for the staged clips
+  training/                                  (Task 1 files already exist; see below)
+    labels.py, ingest.py, label_tool.py, phash.py     DONE (commit 3352743)
+    ingest.py            + --whole-video-label snatch|normal         (Task A1b)
+    events.py            event_hits, choose_threshold, wilson_interval  (Task A4)
+    splits.py            near-duplicate groups, group split, demo-clip guard  (Task A4)
+    bench_screener.py    run GeminiScreener over a split, report metrics  (Task A4)
+    # Part B (deferred): windows.py, build_dataset.py, dataset.py, train.py, evaluate.py
+  app/trigger/
+    gemini_screener.py   GeminiScreener, ScreenResult, ScreenUnavailable    (Task A2)
+    gemini_trigger.py    GeminiTrigger                                       (Task A3)
+    any_trigger.py       AnyTrigger                                          (Task A3)
+    __init__.py          make_trigger                                        (Task A3)
+    # Part B (deferred): action_model.py, scene.py
+  app/video/buffer.py    keyframes(..., max_width)                           (Task A2)
+  app/config.py          screen_* settings, triggers                         (Tasks A2, A3)
+  data/labels.csv        committed
+  reports/               screener_<split>.json committed, *.jsonl cache git-ignored
+  tests/training/..., tests/trigger/...
+docs/FILMING_GUIDE.md                        DONE
 ```
 
 ---
 
-### Task 1: Labels format, ingest, labelling tool, filming guide
+## Part A: Gemini Step 1 (build now)
+
+### Task A1: Labels format, ingest, labelling tool, filming guide — DONE
+
+Commit `3352743`. `LabelRow`, `read_labels`, `write_labels`, `validate_labels`, `ingest.py`, `label_tool.py`, `phash.py` and `docs/FILMING_GUIDE.md` exist. Do not redo.
+
+**Human step (the user, not the agent) — revised.** Put the downloaded videos under `backend/data/datasets/` (`ucf_crime/{Robbery,Stealing,Normal_subset}`, `online/{snatch,normal}`, `staged/`). Datasets such as Snatch 1.0 or RoadCrime-CCTV go under `online/` unless you prefer `ucf_crime/`. Run `ingest.py` per folder and label snatch segments with `label_tool.py`; clips that are already trimmed to the event use Task A1b instead of the tool. **Minimum to run Task A4 (indicative numbers):** ≥ 15 snatch events from ≥ 10 distinct sources, and ≥ 30 minutes of normal footage. The VideoMAE minimum (Part B) is unchanged: 60 snatch segments from ≥ 40 sources and ≥ 2 hours normal.
+
+### Task A1b: Whole-video label for pre-trimmed clips
 
 **Files:**
-- Create: `backend/training/__init__.py`, `backend/training/labels.py`, `backend/training/ingest.py`, `backend/training/label_tool.py`, `docs/FILMING_GUIDE.md`; modify `backend/pyproject.toml` (add `transformers`, `scikit-learn` to the main dependencies)
-- Test: `backend/tests/training/test_labels.py`, `backend/tests/training/test_ingest.py`
+- Modify: `backend/training/ingest.py`
+- Test: `backend/tests/training/test_ingest.py`
 
 **Interfaces:**
-- Produces:
-  - `LabelRow` (pydantic) with fields:
-    - `source_id: str` (stable ID of the original video, e.g. `ucf_Robbery012`, `yt_<hash8>`, `staged_take07`)
-    - `file: str` (path relative to `backend/data/datasets/`)
-    - `start: float` and `end: float` (seconds; `end > start`)
-    - `label: Literal["snatch","normal"]`
-    - `origin: Literal["ucf","online","staged","feedback"]`
-    - `angle: Literal["high","eye","unknown"]`
-    - `light: Literal["day","dusk","night","unknown"]`
-    - `phash: str` (perceptual hash of the first frames)
-    - `notes: str = ""`
-  - `read_labels(path) -> list[LabelRow]` and `write_labels(path, rows)`; `validate_labels(rows) -> list[str]` (error messages for overlapping segments of the same file with different labels, `end > video duration`, unknown files)
-  - `ingest.py <folder> --origin <origin> [--angle] [--light]`: registers every video in the folder by adding a whole-video `normal` row if the folder name contains `normal`, otherwise only computing `source_id` and `phash` and printing "needs labelling". It never overwrites existing rows.
-  - `label_tool.py <file>`: an OpenCV player. Space pauses, `,` and `.` step a frame, `j`/`l` jump ±2 s, `[` and `]` set start and end, `s` saves a `snatch` row, `n` saves a `normal` row, `q` quits. It shows the current time and the existing segments as a coloured bar.
-- `docs/FILMING_GUIDE.md`: the shot list from spec §12. At least 15 snatch takes from 2–3 high fixed angles (day and dusk) and at least 10 normal takes at the same spots; the phone mounted at ≥ 2.5 m pointing down, 1080p 30 fps, landscape. Safety and permission rules: private ground or owner permission, guards warned, slow riding, fake bag, consenting actors. Record which image direction leads to which gate. File naming: `staged_<spot>_<take>_<snatch|normal>.mp4`.
+- Produces: `ingest_folder(..., whole_video_label: Literal["snatch","normal"] | None = None)`. When set, every unregistered video that would otherwise be "needs labelling" gets one row spanning `0..duration` with that label. CLI flag `--whole-video-label snatch|normal`. Videos already treated as normal by folder name keep their normal row. Existing rows are never changed.
 
-- [ ] **Step 1: Write the failing tests:**
-  - `test_label_row_rejects_end_before_start`
-  - `test_validate_flags_conflicting_overlap`
-  - `test_validate_flags_end_beyond_duration` (uses a synthetic 1 s video)
-  - `test_ingest_adds_normal_rows_for_normal_folder`
-  - `test_ingest_does_not_duplicate_existing_source`
-- [ ] **Step 2:** Run `uv run pytest tests/training -v`. Expected: FAIL.
-- [ ] **Step 3:** Implement `labels.py` and `ingest.py`. Implement the perceptual hash as a 64-bit difference hash (dHash) in numpy on 3 frames at 10/50/90% of the clip (grayscale, resized to 9×8), concatenated into a 192-bit hex string; Hamming distance is summed over the three. Do not add `opencv-contrib-python`, because it conflicts with `opencv-python`.
-- [ ] **Step 4:** Run them. Expected: PASS.
-- [ ] **Step 5:** Implement `label_tool.py`. Check it manually on `case-1.mp4` copied to a temp folder (not in `datasets/`): mark one segment and confirm a row appears in a scratch CSV.
-- [ ] **Step 6:** Write `docs/FILMING_GUIDE.md`.
-- [ ] **Step 7: Commit** `feat(training): labels format, ingest, labelling tool, filming guide`.
-
-**Human step (the user, not the agent):** download the UCF-Crime Robbery, Stealing and part of the Normal videos into `backend/data/datasets/ucf_crime/{Robbery,Stealing,Normal_subset}/`, put online clips in `backend/data/datasets/online/{snatch,normal}/` (search keywords are in spec §10), and film the staged clips per the guide into `backend/data/datasets/staged/`. Then run `ingest.py` on each folder and use `label_tool.py` to mark the snatch segments. **Minimum to proceed to Task 3:** 60 snatch segments from ≥ 40 distinct sources, plus ≥ 2 hours of normal footage.
+- [ ] **Step 1:** Write failing tests `test_ingest_whole_video_label_snatch_adds_full_span_row` and `test_ingest_whole_video_label_skips_registered_files` (synthetic 2 s video in `tmp_path`).
+- [ ] **Step 2:** Run `uv run pytest tests/training/test_ingest.py -v`. Expected: FAIL.
+- [ ] **Step 3:** Implement the parameter and the CLI flag in `ingest.py`.
+- [ ] **Step 4:** Run the tests. Expected: PASS.
+- [ ] **Step 5: Commit** `feat(training): ingest whole-video labels for pre-trimmed clips`.
 
 ---
 
-### Task 2: Window sampling and dataset build
+### Task A2: GeminiScreener
 
 **Files:**
-- Create: `backend/training/windows.py`, `backend/training/build_dataset.py`
-- Test: `backend/tests/training/test_windows.py`, `backend/tests/training/test_build_dataset.py`
+- Create: `backend/app/trigger/gemini_screener.py`
+- Modify: `backend/app/video/buffer.py` (add `max_width`), `backend/app/config.py`, `backend/.env.example`
+- Test: `backend/tests/trigger/test_gemini_screener.py`, `backend/tests/video/test_buffer.py` (extend)
 
 **Interfaces:**
-- Consumes: `LabelRow`, `read_labels`, `load_cameras` (Phase 1)
+- Consumes: `Settings.gemini_api_key`, `Settings.gemini_model`, `CameraConfig`, the schema helper `_strict_schema` from `app/verify/claude_verifier.py`.
 - Produces:
-  - `sample_indices(start_s, fps, n=16, span_s=2.0) -> list[int]`: evenly spaced frame indices
-  - `preprocess(frames: list[np.ndarray], size=224, crop: tuple[int,int,int,int] | None = None) -> np.ndarray` (uint8 `[16,224,224,3]`, RGB). If `crop` is given, crop to it first (it is expanded to a square by padding with edge pixels); then resize the shorter side to 224 and centre-crop.
-  - `read_window(path, start_s, ...) -> np.ndarray | None`, which returns None if the video is shorter than needed (Review Focus 2)
-  - **These functions are the single source of preprocessing for both training and runtime.**
-  - `build_dataset.py --labels data/labels.csv --out data/windows/ [--stride-pos 0.25] [--stride-neg 1.0] [--seed 42]`:
-    1. Excludes every clip in `cameras.json`; raises an error if any labelled `file` matches a demo clip by name **or by phash** (Hamming distance ≤ 6).
-    2. Groups sources whose phash is within distance ≤ 6 into one group (near-duplicates; Review Focus 1).
-    3. Splits groups 70/15/15 into train/val/test, stratified so that each split has snatch sources (`StratifiedGroupKFold`-style logic or a manual greedy split).
-    4. Positive windows: windows overlapping a snatch segment by ≥ 50%, with stride `stride-pos`.
-    5. Negative windows: from normal segments, plus **hard negatives** from the non-snatch parts of snatch videos (≥ 2 s away from the segment), with stride `stride-neg`.
-    6. Writes each window as `windows/<split>/<label>/<source_id>_<start_ms>.npy` plus an `index.csv` (`path, split, label, source_id, origin, start`).
-    7. Prints counts per split, label and origin.
+  - `Settings.gemini_screen_model: str | None = None` (falls back to `gemini_model`), `screen_threshold: float = 0.5`, `screen_interval_s: float = 3.0`, `screen_frames: int = 6`, `screen_max_lag_s: float = 6.0`. `.env.example` gets `GEMINI_SCREEN_MODEL=` (empty), `SCREEN_THRESHOLD`, `SCREEN_INTERVAL_S`.
+  - `FrameBuffer.keyframes(center_pts, n=8, span=3.0, draw_tracks=True, max_width: int | None = None) -> list[bytes]`: when `max_width` is set and a frame is wider, resize it (keeping aspect) before JPEG encoding. Default behaviour is unchanged.
+  - `class ScreenResult(BaseModel)`: `suspicious: bool`, `score: float` (0..1), `reason: str`, `suspect_track_ids: list[int]`, `motorcycle_track_id: int | None`, `victim_track_id: int | None`.
+  - `class ScreenUnavailable(Exception)`.
+  - `class GeminiScreener`: `__init__(settings, client: genai.Client | None = None, timeout_s: float = 8.0)`; `screen(frames: list[bytes], camera: CameraConfig) -> ScreenResult` is **synchronous** (it runs on a worker thread or in the benchmark). It uses `client.models.generate_content` with JSON-schema output, `thinking_budget=0`, and raises `ScreenUnavailable` on timeout, API error, block, empty text, or schema failure.
+  - `build_screen_prompt(camera: CameraConfig) -> str`: states the camera name and location; says the frames are consecutive, oldest first, over about 3 s, may or may not have numbered boxes; asks whether a bag/phone/chain snatch by a person on a motorcycle (or on foot) is happening or just happened; says **to answer suspicious=true whenever it is plausible, because a second reviewer removes false alarms**; says normal traffic, people walking, parking, and a rider stopping to talk are not suspicious; says track IDs must be copied from the visible `#id` labels and left empty if none are visible.
 
-- [ ] **Step 1: Write the failing tests:**
-  - `test_sample_indices_even_spacing`
-  - `test_preprocess_shape_and_dtype`
-  - `test_preprocess_with_crop_pads_to_square`
-  - `test_read_window_short_video_returns_none`
-  - `test_build_excludes_demo_clip_by_name_and_phash`
-  - `test_build_near_duplicates_same_split`
-  - `test_build_no_source_in_two_splits`
-  - `test_build_hard_negatives_away_from_segment`
-  - `test_build_skips_segment_shorter_than_window_with_warning`
-
-  The build tests use 4–6 synthetic videos written into `tmp_path`.
-- [ ] **Step 2:** Run them. Expected: FAIL.
-- [ ] **Step 3:** Implement `windows.py` and `build_dataset.py`.
-- [ ] **Step 4:** Run them. Expected: PASS.
-- [ ] **Step 5:** Run the real build: `uv run python -m training.build_dataset --labels data/labels.csv --out data/windows`. Expected: no errors, and every split has ≥ 1 snatch source. Record the counts in `backend/models/action/dataset_stats.json`.
-- [ ] **Step 6: Commit** `feat(training): window sampling and leak-safe dataset build`.
+- [ ] **Step 1: Write the failing tests** (fake client: `SimpleNamespace(models=FakeModels)` where `generate_content` returns an object with `.text` and `.prompt_feedback`):
+  - `test_screen_parses_result`
+  - `test_screen_sends_one_image_part_per_frame_and_prompt_last` (also asserts `camera.name` is in the prompt and "plausible" instruction is present)
+  - `test_screen_timeout_raises_screen_unavailable`
+  - `test_screen_api_error_raises_screen_unavailable` (uses `google.genai.errors.APIError(429, {...})`)
+  - `test_screen_blocked_prompt_raises_screen_unavailable`
+  - `test_screen_bad_json_raises_screen_unavailable`
+  - `test_score_above_one_is_schema_failure`
+  - `test_keyframes_max_width_downscales` (extend the buffer tests: a 1280×720 frame comes out 640 wide; without `max_width` it stays 1280)
+- [ ] **Step 2:** Run `uv run pytest tests/trigger/test_gemini_screener.py -v`. Expected: FAIL.
+- [ ] **Step 3:** Implement the settings, `max_width`, and `gemini_screener.py`. Reuse `_strict_schema(ScreenResult)` for the response schema.
+- [ ] **Step 4:** Run the tests plus the full suite `uv run pytest -q`. Expected: PASS, with the Phase 1 tests still green.
+- [ ] **Step 5: Commit** `feat(trigger): GeminiScreener for step 1`.
 
 ---
 
-### Task 3: Training
+### Task A3: GeminiTrigger, AnyTrigger, make_trigger, wiring
 
 **Files:**
-- Create: `backend/training/dataset.py`, `backend/training/train.py`
-- Test: `backend/tests/training/test_dataset.py`, `backend/tests/training/test_train_smoke.py`
+- Create: `backend/app/trigger/gemini_trigger.py`, `backend/app/trigger/any_trigger.py`; modify `backend/app/trigger/__init__.py` (add `make_trigger`), `backend/app/models.py` (`CandidateEvent.trigger: Literal["rule","model","llm"]`), `backend/app/config.py` (`triggers: Literal["rule","llm","both"] = "both"`), `backend/app/main.py` (`_build_pipelines` builds the trigger per camera via `make_trigger`), `backend/scripts/precompute.py` (use `make_trigger(..., blocking=True)`), and any frontend type that enumerates trigger values (`grep -rn "rule" frontend/src/lib/types.ts`).
+- Test: `backend/tests/trigger/test_gemini_trigger.py`, `backend/tests/trigger/test_any_trigger.py`
 
 **Interfaces:**
-- Consumes: the `index.csv` and windows from Task 2
+- Consumes: `Trigger` protocol (`update(fd: FrameDetections) -> CandidateEvent | None`, `reset()`), `FrameBuffer.keyframes(...)`, `GeminiScreener`, `ScreenResult`, `ScreenUnavailable`, `SnatchRule`.
 - Produces:
-  - `WindowDataset(index_csv, split, augment: bool)`: returns `(tensor [16,3,224,224] float normalised with the VideoMAE image processor mean/std, label int)`. Augmentations when `augment`, applied identically across all 16 frames of a window:
-    - horizontal flip (p = 0.5)
-    - brightness and contrast ±25%
-    - Gaussian blur (p = 0.2)
-    - JPEG re-compression at quality 30–70 (p = 0.3)
-    - random resized crop with scale 0.8–1.0
-  - `class_weights(index_csv, split="train") -> torch.Tensor` (inverse frequency, normalised)
-  - `train.py --arch videomae|r2plus1d --epochs 15 --batch 4 --accum 4 --lr 5e-5 --out models/action/ [--max-steps N]`:
-    - uses AdamW, cosine schedule with 10% warmup, fp16 autocast, and weighted cross-entropy
-    - evaluates on the val split each epoch, keeping the best val **snatch F1**, with early stopping patience 4
-    - saves `model/` (`save_pretrained` for VideoMAE, a `state_dict` + `arch.json` for r2plus1d), `train_log.csv` and `labels.json` (`["normal","snatch"]`)
-- **The class order `["normal","snatch"]` is fixed everywhere.**
+  - `GeminiTrigger(settings, camera, buffer: FrameBuffer, screener: GeminiScreener | None = None, blocking: bool = False, cooldown_s: float = 10.0, backoff_s: float = 30.0)` implementing `Trigger`.
+    - **Gate:** screening is considered only on frames that contain at least one `person` track.
+    - **Cadence:** at most one screening per `settings.screen_interval_s` of `fd.pts`, and never while one is in flight.
+    - **Request:** `buffer.keyframes(fd.pts, n=settings.screen_frames, span=3.0, max_width=640)`. Empty buffer → skip.
+    - **Live (`blocking=False`):** the call runs on a single-thread executor; each `update` polls the future and returns at most one candidate.
+    - **Blocking (`blocking=True`):** the call runs inline. Used by `precompute.py` and the benchmark, where video time runs faster than wall time.
+    - **Fire rule:** result `suspicious` and `score >= settings.screen_threshold` and `fd.pts - request_pts <= settings.screen_max_lag_s` and the request's generation equals the current generation. The candidate's `pts` is the **request pts** (end of the screened window); `trigger="llm"`; `detected_at` is now.
+    - **IDs:** `suspect_track_ids`, `motorcycle_track_id`, `victim_track_id` are kept only if the ID appeared in a detection within the last 4 s of `pts` (the trigger keeps its own small deque of recent track IDs); otherwise dropped.
+    - **Failures:** `ScreenUnavailable` pauses screening for `backoff_s` of `fd.pts` and logs one warning; nothing is raised.
+    - **Cooldown:** after a candidate, no further candidates for `cooldown_s`.
+    - `reset()` clears state and increments the generation so in-flight results are discarded.
+  - `AnyTrigger(triggers: list[Trigger], cooldown_s: float = 10.0)`: calls every trigger on every frame (so each keeps its own state), returns the first candidate, and suppresses all candidates from any trigger for `cooldown_s` after one is emitted. `reset()` resets all.
+  - `make_trigger(settings: Settings, camera: CameraConfig, buffer: FrameBuffer, blocking: bool = False) -> Trigger`: `rule` → `SnatchRule()`; `llm` → `GeminiTrigger`; `both` → `AnyTrigger([SnatchRule(), GeminiTrigger])`. If `gemini_api_key` is missing, `llm` and `both` log one warning and return `SnatchRule()`.
+  - `main.py`: `_build_pipelines` creates the `FrameBuffer` first and passes the same instance to `make_trigger` and `CameraPipeline`. The pipeline already pushes each frame to the buffer before calling `trigger.update`, so no pipeline change is needed.
 
-- [ ] **Step 1: Write the failing tests:**
-  - `test_dataset_item_shape_and_label`
-  - `test_augment_same_flip_for_all_frames`
-  - `test_class_weights_favour_minority` (Review Focus 3)
-  - `test_train_smoke_runs_two_steps`, which runs `train.py --arch r2plus1d --max-steps 2 --batch 2` on a tiny synthetic windows folder on CPU and asserts the output files exist
-- [ ] **Step 2:** Run them. Expected: FAIL.
-- [ ] **Step 3:** Implement `dataset.py` and `train.py`.
-- [ ] **Step 4:** Run them. Expected: PASS.
-- [ ] **Step 5:** Run the real training: `uv run python -m training.train --arch videomae --out models/action/`. If it runs out of memory at batch 4, retry at `--batch 2 --accum 8`; if it still fails, use `--arch r2plus1d`. Record which architecture was used in `models/action/arch.json`.
-- [ ] **Step 6: Commit** `feat(training): action model fine-tuning` (code and `train_log.csv` only, not weights).
+- [ ] **Step 1: Write the failing tests** (fake screener with a scripted `screen()`; a real `FrameBuffer` filled with tiny frames; scenes built with the existing `make_scene` helper in `tests/trigger/conftest.py`):
+  - `test_fires_when_screen_positive_blocking`
+  - `test_below_threshold_does_not_fire`
+  - `test_no_person_means_no_call` (screener call count stays 0)
+  - `test_respects_interval_and_single_inflight` (live mode with a slow fake: call count matches the interval, never two at once)
+  - `test_live_update_never_blocks` (slow fake of 0.5 s; each `update` returns in under 50 ms)
+  - `test_stale_result_discarded_when_lagging` (Review Focus 2 and lag)
+  - `test_result_from_previous_loop_discarded_after_reset` (Review Focus 2)
+  - `test_unavailable_pauses_then_retries` (Review Focus 1: no raise, no call during `backoff_s`, a call after it)
+  - `test_candidate_without_track_ids_is_valid` (Review Focus 4)
+  - `test_hallucinated_track_ids_are_dropped` (Review Focus 5)
+  - `test_cooldown_after_candidate`
+  - `test_any_trigger_one_candidate_when_both_fire` (Review Focus 3)
+  - `test_any_trigger_cooldown_applies_across_triggers`
+  - `test_any_trigger_reset_resets_all`
+  - `test_make_trigger_without_key_returns_rule` (Settings with `gemini_api_key=None`, `triggers="both"`)
+  - `test_make_trigger_both_returns_any_trigger`
+  - `test_pipeline_opens_incident_for_llm_candidate_without_ids` (end to end with `CameraPipeline`, fake detector, fake source, fake screener, `MockVerifier`: the incident reaches `PENDING_REVIEW`, no exception, direction is `(None, None)`)
+- [ ] **Step 2:** Run `uv run pytest tests/trigger -v`. Expected: FAIL.
+- [ ] **Step 3:** Implement `gemini_trigger.py`, `any_trigger.py`, `make_trigger`, the model/config changes and the wiring. Update the frontend trigger type if one exists and run `npm test` in `frontend/`.
+- [ ] **Step 4:** Run the full backend suite `uv run pytest -q` and `npm test` (frontend). Expected: all PASS.
+- [ ] **Step 5: Commit** `feat(trigger): GeminiTrigger combined with Rule B`.
 
 ---
 
-### Task 4: Evaluation and threshold selection
+### Task A4: Benchmark the screener on the dataset
 
 **Files:**
-- Create: `backend/training/evaluate.py`
-- Test: `backend/tests/training/test_evaluate.py`
+- Create: `backend/training/events.py`, `backend/training/splits.py`, `backend/training/bench_screener.py`
+- Test: `backend/tests/training/test_events.py`, `backend/tests/training/test_splits.py`, `backend/tests/training/test_bench_screener.py`
 
 **Interfaces:**
-- Consumes: the trained model folder, the windows `index.csv`, and `labels.csv` (for event-level evaluation on the full test videos)
+- Consumes: `LabelRow`, `read_labels`, `load_cameras`, `GeminiScreener`, `hamming` from `training/phash.py`.
 - Produces:
-  - `event_hits(scores: list[tuple[float,float]], events: list[tuple[float,float]], threshold, consecutive=2, tolerance_s=1.5) -> tuple[int, int]` (hits, false triggers). `scores` are `(window_start_s, p_snatch)` pairs with 0.5 s stride. A trigger is ≥ `consecutive` consecutive windows ≥ threshold. It is a hit if it falls within `[event.start - tolerance, event.end + tolerance]`; otherwise it is a false trigger. Merge triggers within the 10 s cooldown.
-  - `choose_threshold(val_results, max_false_per_hour=2.0) -> float`: the lowest threshold whose false triggers per hour of normal footage are ≤ the limit; among those, the one with the highest event recall
-  - `evaluate.py --model models/action/ --split val|test`:
-    - scores every val/test **source video end to end** with a 0.5 s stride
-    - writes `models/action/metrics_<split>.json` with: window precision/recall/F1 per class, the confusion matrix, event recall, false triggers per hour, the threshold, and the number of events and hours
-    - with `--split val`, also writes `threshold.json`
-- **Report per-class numbers, never plain accuracy alone** (Review Focus 3).
+  - `events.event_hits(scores: list[tuple[float, float]], events: list[tuple[float, float]], threshold: float, consecutive: int = 2, tolerance_s: float = 1.5, cooldown_s: float = 10.0) -> tuple[int, int]` returning `(hits, false_triggers)`. `scores` are `(time_s, p_snatch)`. A trigger is `consecutive` consecutive scores ≥ threshold; it is a hit if its time is within `[event.start - tolerance_s, event.end + tolerance_s]`, otherwise a false trigger; triggers within `cooldown_s` of the previous one are merged. Each event counts as hit at most once.
+  - `events.VideoScores = tuple[list[tuple[float, float]], list[tuple[float, float]], float]` (scores, events, hours of footage).
+  - `events.choose_threshold(videos: list[VideoScores], max_false_per_hour: float = 2.0, **hit_kwargs) -> float`: the lowest threshold (searched over the distinct score values) whose false triggers per hour ≤ the limit; ties go to higher event recall.
+  - `events.wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]`.
+  - `splits.source_groups(rows: list[LabelRow], max_hamming: int = 6) -> list[list[str]]`: groups of `source_id` whose phashes are within `max_hamming` (union-find).
+  - `splits.split_sources(rows, seed: int = 42, fractions: tuple[float, float, float] = (0.7, 0.15, 0.15)) -> dict[str, str]`: `source_id → "train"|"val"|"test"`, whole groups together, greedy so each split gets at least one snatch source when there are ≥ 3 snatch groups.
+  - `splits.assert_no_demo_clips(rows, cameras) -> None`: raises `ValueError` if a row's file name equals a camera clip, or its phash is within 6 of a demo clip's phash (the demo phash is computed from `backend/data/<clip>`).
+  - `bench_screener.py --labels data/labels.csv --split val|test|all [--stride-s 3.0] [--max-calls 1500] [--cache reports/screener_cache.jsonl] [--out reports/screener_<split>.json]`:
+    1. Loads labels, runs `assert_no_demo_clips`, takes the sources of the requested split from `split_sources`. (`--split all` is only for smoke runs and is not reported.)
+    2. For each source video, steps through time every `stride_s`, builds 6 JPEGs over the last 3 s at max width 640, no boxes, and calls `GeminiScreener.screen`. Snatch videos are scored over the whole file; the events are the snatch segments.
+    3. Prints the number of planned calls first. Exits with code 2 and calls nothing if it exceeds `--max-calls`.
+    4. Caches each result in the JSONL cache keyed by `(file, t, model, prompt_hash)`. A rerun reads the cache and makes no API call.
+    5. With `--split val` it picks the threshold with `choose_threshold(..., consecutive=1, tolerance_s=3.0)` and writes `reports/screener_threshold.json`. With `--split test` it reads that file and fails if it is missing.
+    6. Writes the report JSON: events, hits, event recall with `wilson_interval`, normal hours, false triggers, false triggers per hour, the threshold, the model ID, the prompt hash, call count, per-origin counts, and the list of missed events (file, start, end, best score).
 
 - [ ] **Step 1: Write the failing tests:**
   - `test_event_hits_counts_hit_within_tolerance`
-  - `test_event_hits_single_window_below_consecutive_not_trigger`
+  - `test_event_hits_single_score_below_consecutive_not_trigger`
   - `test_event_hits_merges_within_cooldown`
+  - `test_event_hits_counts_each_event_once`
   - `test_choose_threshold_respects_false_rate`
   - `test_choose_threshold_prefers_recall`
+  - `test_wilson_interval_known_values` (for example 9 of 10 → about (0.60, 0.98))
+  - `test_source_groups_merges_near_duplicates` (Review Focus 7)
+  - `test_split_sources_no_source_in_two_splits_and_groups_together`
+  - `test_assert_no_demo_clips_by_name_and_phash`
+  - `test_bench_refuses_over_max_calls_and_makes_no_calls` (Review Focus 6)
+  - `test_bench_second_run_uses_cache_and_makes_no_calls` (Review Focus 6)
+  - `test_bench_test_split_requires_threshold_file`
+  
+  The bench tests use 4–6 synthetic videos in `tmp_path` and a fake screener injected through a `screener` parameter of the module's `run(...)` function (the CLI calls `run`).
+- [ ] **Step 2:** Run `uv run pytest tests/training -v`. Expected: FAIL.
+- [ ] **Step 3:** Implement `events.py`, `splits.py`, `bench_screener.py`.
+- [ ] **Step 4:** Run the tests. Expected: PASS.
+- [ ] **Step 5 (needs the downloaded dataset and `GEMINI_API_KEY`):** run `uv run python -m training.bench_screener --split val`, read the planned-call number it prints, then run it for real; then `--split test`. Commit both report JSONs. If recall is below 0.90, read the missed-events list, then change only `build_screen_prompt`, delete nothing from the cache (the prompt hash changes the key), and rerun `--split val` first. Do not tune on `--split test`. Record each round in `backend/reports/SCREENER_ROUNDS.md` (prompt hash, model, val and test numbers).
+- [ ] **Step 6: Commit** `feat(training): events, splits and Gemini screener benchmark`.
+
+---
+
+### Task A5: Live check on the demo clips and docs
+
+**Files:**
+- Create: `backend/scripts/debug_trigger.py`
+- Modify: `README.md` (results, runbook, env vars), `docs/superpowers/plans/README.md` (roadmap rows), `docs/superpowers/plans/2026-10-11-cctv-alert-phase3-evidence-scale.md` (the `make_trigger` consumes line, now `make_trigger(settings, camera, buffer, blocking)`; `settings.triggers` values `rule|llm|both`)
+
+**Interfaces:**
+- `debug_trigger.py <clip> [--camera CAM-02] [--triggers rule|llm|both]`: runs the real `Detector` and `make_trigger(..., blocking=True)` over the clip with the threshold from `reports/screener_threshold.json`, and prints each candidate's trigger source, pts, and the delay from the labelled snatch time (`--snatch-at <seconds>`).
+
+- [ ] **Step 1:** Run `debug_trigger.py data/case-2.mp4 --triggers llm --snatch-at 6.4` and `data/case-1.mp4 --triggers llm`. Expected: a candidate within 4 s of the snatch on case-2 and no candidate on case-1. **Threshold and prompt stay frozen. If case-2 is missed, report the Gemini scores honestly and say so in the README; do not tune on it.**
+- [ ] **Step 2:** Regenerate replay files: `uv run python scripts/precompute.py CAM-02` with `TRIGGERS=both`.
+- [ ] **Step 3:** Repeat the Phase 1 Task 14 checks: snatch → card ≤ 10 s over 3 runs; the normal clip looping for 10 minutes gives 0 `PENDING_REVIEW`. Record how many candidates came from `rule` and `llm`, how many Step 2 rejected, and the Gemini calls per minute observed.
+- [ ] **Step 4:** Update the README (env vars `GEMINI_*`, `SCREEN_*`, `TRIGGERS`; the benchmark numbers with counts and intervals; the demo checks; the quota note), the roadmap README, and the Phase 3 consumes line.
+- [ ] **Step 5: Commit** `docs: phase 2 gemini step 1 results`.
+
+---
+
+## Part B: VideoMAE action model (deferred)
+
+**Do not start until Part A is committed and you decide there is time.** Why you would: Gemini screening costs API calls and 1–3 s per round trip; a local model has neither. The dataset, `labels.csv`, `splits.py`, `events.py` and the benchmark metrics from Part A are reused, so the two triggers are compared on the same held-out videos.
+
+**Extra Global Constraints for Part B**
+- Window: **16 frames sampled evenly over 2.0 s**, resized so the shorter side is 224, centre-cropped to 224×224.
+- Model: `MCG-NJU/videomae-base-finetuned-kinetics`, head replaced for 2 labels `["normal", "snatch"]` (order fixed everywhere). Fallback if it will not train on the RTX 3080 (16 GB) at batch ≥ 2 with fp16: batch 2 with accumulation 8, then torchvision `r2plus1d_18` (Kinetics weights).
+- Targets: event recall ≥ 0.90 on the same test split Gemini was benchmarked on, and Step 1 ≤ 2 s at runtime while YOLO runs on the same GPU.
+- Dependencies `transformers>=5.19.0` and `scikit-learn>=1.9.1` are already in `pyproject.toml`.
+
+**Review Focus for Part B**
+1. Segments shorter than one window, or videos shorter than 2 s: skipped with a warning, no crash, no padding.
+2. Class imbalance (about 10:1): weighted loss, and per-class metrics instead of plain accuracy.
+3. GPU contention at runtime: stale windows are dropped, never queued.
+4. All three triggers fire for one event: one candidate (already covered by `AnyTrigger` tests; extend them).
+
+### Task B1: Window sampling and dataset build
+
+**Files:** Create `backend/training/windows.py`, `backend/training/build_dataset.py`. Test `backend/tests/training/test_windows.py`, `test_build_dataset.py`.
+
+**Interfaces:**
+- Consumes: `LabelRow`, `read_labels`, `load_cameras`, and `splits.source_groups`, `splits.split_sources`, `splits.assert_no_demo_clips` from Task A4 (do not reimplement them).
+- Produces:
+  - `sample_indices(start_s, fps, n=16, span_s=2.0) -> list[int]`
+  - `preprocess(frames: list[np.ndarray], size=224, crop: tuple[int,int,int,int] | None = None) -> np.ndarray` (uint8 `[16,224,224,3]`, RGB; a given `crop` is padded to a square with edge pixels first). **Single source of preprocessing for training and runtime.**
+  - `read_window(path, start_s, ...) -> np.ndarray | None` (None if the video is too short)
+  - `build_dataset.py --labels data/labels.csv --out data/windows/ [--stride-pos 0.25] [--stride-neg 1.0] [--seed 42]`: demo guard, splits from `split_sources`, positive windows overlapping a snatch segment by ≥ 50%, negative windows from normal segments plus hard negatives ≥ 2 s from a snatch segment, writes `windows/<split>/<label>/<source_id>_<start_ms>.npy` and `index.csv` (`path, split, label, source_id, origin, start`), prints counts per split, label and origin.
+
+- [ ] **Step 1:** Write failing tests: `test_sample_indices_even_spacing`, `test_preprocess_shape_and_dtype`, `test_preprocess_with_crop_pads_to_square`, `test_read_window_short_video_returns_none`, `test_build_hard_negatives_away_from_segment`, `test_build_skips_segment_shorter_than_window_with_warning`, `test_build_uses_the_same_split_as_bench` (the split of every source equals `split_sources(rows)`).
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement `windows.py` and `build_dataset.py`.
+- [ ] **Step 4:** Run them. Expected: PASS.
+- [ ] **Step 5:** Run the real build. Expected: no errors and every split has ≥ 1 snatch source. Record counts in `backend/models/action/dataset_stats.json`.
+- [ ] **Step 6: Commit** `feat(training): window sampling and dataset build`.
+
+### Task B2: Training
+
+**Files:** Create `backend/training/dataset.py`, `backend/training/train.py`. Test `backend/tests/training/test_dataset.py`, `test_train_smoke.py`.
+
+**Interfaces:**
+- Consumes: `index.csv` and windows from Task B1.
+- Produces:
+  - `WindowDataset(index_csv, split, augment: bool)` returning `(tensor [16,3,224,224] float, label int)` normalised with the VideoMAE image processor mean and std. When `augment`, applied identically across the 16 frames: horizontal flip (p 0.5), brightness and contrast ±25%, Gaussian blur (p 0.2), JPEG re-compression quality 30–70 (p 0.3), random resized crop scale 0.8–1.0.
+  - `class_weights(index_csv, split="train") -> torch.Tensor` (inverse frequency, normalised).
+  - `train.py --arch videomae|r2plus1d --epochs 15 --batch 4 --accum 4 --lr 5e-5 --out models/action/ [--max-steps N]`: AdamW, cosine schedule with 10% warmup, fp16 autocast, weighted cross-entropy; evaluates val each epoch, keeps the best val snatch F1, early stopping patience 4; saves `model/`, `train_log.csv`, `labels.json`, `arch.json`.
+
+- [ ] **Step 1:** Write failing tests: `test_dataset_item_shape_and_label`, `test_augment_same_flip_for_all_frames`, `test_class_weights_favour_minority`, `test_train_smoke_runs_two_steps` (`--arch r2plus1d --max-steps 2 --batch 2` on CPU with a tiny synthetic windows folder; the output files exist).
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Implement `dataset.py` and `train.py`.
+- [ ] **Step 4:** Run them. Expected: PASS.
+- [ ] **Step 5:** Run the real training. On out-of-memory use `--batch 2 --accum 8`, then `--arch r2plus1d`.
+- [ ] **Step 6: Commit** `feat(training): action model fine-tuning` (code and `train_log.csv`, not weights).
+
+### Task B3: Evaluation
+
+**Files:** Create `backend/training/evaluate.py`. Test `backend/tests/training/test_evaluate.py`.
+
+**Interfaces:**
+- Consumes: the trained model folder, `index.csv`, `labels.csv`, and `events.event_hits`, `events.choose_threshold`, `events.wilson_interval` from Task A4.
+- Produces: `evaluate.py --model models/action/ --split val|test`: scores every video of the split end to end with a 0.5 s stride, writes `models/action/metrics_<split>.json` (per-class window precision, recall and F1, confusion matrix, event recall with interval, false triggers per hour, threshold, event and hour counts); with `--split val` also writes `threshold.json`. Uses `consecutive=2`, `tolerance_s=1.5`.
+
+- [ ] **Step 1:** Write failing tests: `test_evaluate_reports_per_class_not_only_accuracy`, `test_evaluate_val_writes_threshold_json` (tiny fake model callable and two synthetic videos).
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement `evaluate.py`.
 - [ ] **Step 4:** Run them. Expected: PASS.
-- [ ] **Step 5:** Run `--split val` (which writes the threshold), then `--split test`. Target: **event recall ≥ 0.90** on test. If it falls short, add data (more staged takes, or the hard negatives from the false triggers) and repeat Tasks 2–4. Record each round in `models/action/ROUNDS.md` (data counts, architecture, val/test metrics).
-- [ ] **Step 6: Commit** `feat(training): event-level evaluation and threshold selection` (with the metrics JSON).
+- [ ] **Step 5:** Run `--split val`, then `--split test`. Target event recall ≥ 0.90. If short, add data or hard negatives and repeat B1–B3, logging each round in `models/action/ROUNDS.md`.
+- [ ] **Step 6: Commit** `feat(training): event-level evaluation of the action model`.
 
----
+### Task B4: ActionModelTrigger
 
-### Task 5: Runtime trigger and combination with Rule B
-
-**Files:**
-- Create: `backend/app/trigger/action_model.py`, `backend/app/trigger/any_trigger.py`; modify `backend/app/config.py` (add `triggers: Literal["rule","model","both"] = "both"`, `action_model_dir: Path = backend/models/action`), `backend/app/main.py` and `backend/scripts/precompute.py` (build triggers via `make_trigger`)
-- Test: `backend/tests/trigger/test_action_model.py`, `backend/tests/trigger/test_any_trigger.py`
+**Files:** Create `backend/app/trigger/action_model.py`, `backend/app/trigger/scene.py`; modify `snatch_rule.py` (import `classify_persons`), `backend/app/trigger/__init__.py` (extend `make_trigger`), `backend/app/config.py` (`triggers: Literal["rule","llm","model","both","all"]`, `action_model_dir: Path = backend/models/action`). Test `backend/tests/trigger/test_action_model.py`.
 
 **Interfaces:**
-- Consumes: the `Trigger` protocol (`update(fd, frame)`, `reset()`), `CandidateEvent`, `windows.preprocess`, `sample_indices` logic, the model folder, `threshold.json`
+- Consumes: `Trigger` (`update(fd)` only; **it has no `frame` argument**, so like `GeminiTrigger` this trigger reads frames from the shared `FrameBuffer`), `windows.preprocess`, `sample_indices`, `threshold.json`.
 - Produces:
-  - `ActionModelTrigger(model_dir: Path, device="cuda:0", stride_s=0.5, consecutive=2, cooldown_s=10.0, max_lag_s=1.0)`:
-    - keeps a 2.2 s ring buffer of `(pts, frame, fd)`
-    - every `stride_s` of pts, it picks 16 frames over the last 2.0 s and computes the **crop region**: the union bbox of all motorcycles and persons within 1.5 × the pedestrian height of any motorcycle in the window, padded by 25%, or the full frame if there are none
-    - it preprocesses with `windows.preprocess`, runs the model in a **single background worker thread**, and fires after `consecutive` scores ≥ threshold
-    - `suspect_track_ids` are the riders of the motorcycle closest to a pedestrian at the trigger pts (same rider/pedestrian classification as `SnatchRule`, so import the helper instead of copying it)
-    - **If a result returns with pts older than `max_lag_s` behind the latest frame, it is discarded, and windows queued while the worker is busy are dropped (keep only the newest)** (Review Focus 4)
-    - `reset()` clears the buffer, the scores and the cooldown
-  - `AnyTrigger(triggers: list[Trigger], cooldown_s=10.0)`: calls every trigger each frame and returns the first candidate. Once a candidate has been emitted, further candidates from **any** trigger are suppressed for `cooldown_s` (Review Focus 5). `reset()` resets all of them.
-  - `make_trigger(settings) -> Trigger`: `rule` → `SnatchRule`; `model` → `ActionModelTrigger`; `both` → `AnyTrigger([SnatchRule, ActionModelTrigger])`. If the model folder or `threshold.json` is missing, it logs a warning and falls back to the rule only.
-- Move the rider/pedestrian classification helper from `snatch_rule.py` into `app/trigger/scene.py` with the signature `classify_persons(fd: FrameDetections) -> tuple[dict[int,int], list[int]]` (rider track → motorcycle track, pedestrian track IDs). `SnatchRule` imports it from there; its existing tests must still pass.
+  - `scene.classify_persons(fd: FrameDetections) -> tuple[dict[int, int], list[int]]` (rider track → motorcycle track, pedestrian track IDs), moved out of `snatch_rule.py`; the existing `SnatchRule` tests must still pass.
+  - `ActionModelTrigger(settings, buffer, model_dir: Path, device="cuda:0", stride_s=0.5, consecutive=2, cooldown_s=10.0, max_lag_s=1.0, scorer: Callable[[np.ndarray], float] | None = None)` implementing `Trigger`. Every `stride_s` of pts it takes 16 frames over the last 2.0 s from the buffer, crops to the union box of motorcycles and people near them (padded by 25%, full frame if none), scores on a single worker thread, fires after `consecutive` scores ≥ threshold, drops stale results and queued windows (keeps only the newest).
+  - `make_trigger`: `model` → `ActionModelTrigger`; `all` → `AnyTrigger([SnatchRule, GeminiTrigger, ActionModelTrigger])`. A missing model folder or `threshold.json` logs a warning and drops that trigger from the list.
 
-- [ ] **Step 1: Write the failing tests** (they use a fake model callable injected via a `scorer` parameter for testability: `ActionModelTrigger(..., scorer: Callable[[np.ndarray], float] | None = None)`):
-  - `test_fires_after_two_consecutive_high_scores`
-  - `test_single_high_score_does_not_fire`
-  - `test_crop_region_covers_motorcycle_and_nearby_pedestrian`
-  - `test_crop_full_frame_when_no_motorcycle`
-  - `test_stale_result_discarded_when_lagging` (the fake scorer sleeps longer than `max_lag_s`)
-  - `test_busy_worker_keeps_only_newest_window`
-  - `test_reset_clears_state_on_loop`
-  - `test_any_trigger_one_candidate_when_both_fire`
-  - `test_any_trigger_cooldown_applies_across_triggers`
-  - `test_make_trigger_falls_back_to_rule_without_model`
+- [ ] **Step 1:** Write failing tests: `test_fires_after_two_consecutive_high_scores`, `test_single_high_score_does_not_fire`, `test_crop_region_covers_motorcycle_and_nearby_pedestrian`, `test_crop_full_frame_when_no_motorcycle`, `test_stale_result_discarded_when_lagging`, `test_busy_worker_keeps_only_newest_window`, `test_reset_clears_state_on_loop`, `test_any_trigger_one_candidate_when_three_fire`, `test_make_trigger_all_drops_missing_model`.
 - [ ] **Step 2:** Run them. Expected: FAIL.
-- [ ] **Step 3:** Implement `scene.py`, `action_model.py` and `any_trigger.py`, and wire up `make_trigger`.
-- [ ] **Step 4:** Run the full suite with `uv run pytest -v`. Expected: all PASS, including the Phase 1 tests.
-- [ ] **Step 5: Measure latency.** Write `scripts/debug_trigger.py <clip> --triggers both`, which prints each candidate's trigger source and the delay between the labelled snatch time and the candidate. Expected: ≤ 2 s on the snatch demo clip, and no candidate on the normal clip.
-- [ ] **Step 6: Commit** `feat(backend): action model trigger combined with Rule B`.
+- [ ] **Step 3:** Implement `scene.py`, `action_model.py` and the `make_trigger` extension.
+- [ ] **Step 4:** Run the full suite. Expected: all PASS.
+- [ ] **Step 5:** Measure with `scripts/debug_trigger.py <clip> --triggers model`. Expected: ≤ 2 s after the snatch on the snatch clip, nothing on the normal clip.
+- [ ] **Step 6: Commit** `feat(backend): action model trigger`.
 
----
+### Task B5: Compare and decide
 
-### Task 6: Regression on the demo and refreshed replay
-
-**Files:**
-- Modify: `README.md` (results section), `backend/data/precomputed/*` (regenerated, git-ignored)
-
-- [ ] **Step 1:** Regenerate the replay files with `scripts/precompute.py` for each analysed camera, using `TRIGGERS=both`.
-- [ ] **Step 2:** Repeat the Phase 1 Task 14 checks: snatch → card ≤ 10 s over 3 runs; the normal clip looping for 10 minutes gives 0 PENDING_REVIEW. Also record how many candidates came from `rule` vs `model`, and how many Step 2 rejected (from `/incidents`).
-- [ ] **Step 3:** Update the README results with the model metrics (test event recall, false triggers per hour) and the demo checks.
-- [ ] **Step 4: Commit** `docs: phase 2 results`.
+- [ ] **Step 1:** Run `bench_screener.py --split test` (cached, free) and `evaluate.py --split test` side by side. Add a table to the README: Rule B, Gemini, VideoMAE, all three. Columns: event recall with interval, false triggers per hour, median delay, cost per hour of footage.
+- [ ] **Step 2:** Regenerate replay files with `TRIGGERS=all`, repeat the Task A5 demo checks, update the README.
+- [ ] **Step 3: Commit** `docs: phase 2 action model results`.

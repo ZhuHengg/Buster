@@ -5,7 +5,8 @@ Design: [`docs/SOLUTION_PLAN.md`](../../SOLUTION_PLAN.md) · Problem: [`docs/PRO
 | Phase | Plan | Delivers | Can start when | Done when |
 |---|---|---|---|---|
 | 1. Minimum complete demo | [phase1](2026-10-11-cctv-alert-phase1.md) | Live CMS, YOLO tracking, Rule B trigger, Claude verification, guard approve/reject, call/SMS escalation, incident log, replay mode | Now | Snatch clip → alert card ≤ 10 s; normal clip 10 min → 0 alerts; full flow works with zero credentials |
-| 2. Action model | [phase2](2026-10-11-cctv-alert-phase2-action-model.md) | Labelling tools, leak-safe dataset build, VideoMAE fine-tune, event-level evaluation, model trigger combined with Rule B | Phase 1 done **and** the data minimum is collected (60 snatch segments from ≥ 40 sources, ≥ 2 h of normal footage) | Test event recall ≥ 0.90; Step 1 ≤ 2 s; Phase 1 demo checks still pass |
+| 2A. Gemini Step 1 | [phase2 Part A](2026-10-11-cctv-alert-phase2-action-model.md) | Gemini Flash screener as a second Step 1 trigger next to Rule B, dataset used as a benchmark (event recall, false triggers per hour) | Phase 1 done; benchmark needs ≥ 15 labelled snatch events from ≥ 10 sources and ≥ 30 min normal (indicative only) | Benchmark report with intervals; case-1/case-2 checked once after the threshold is frozen; snatch → card ≤ 10 s |
+| 2B. Action model (deferred) | [phase2 Part B](2026-10-11-cctv-alert-phase2-action-model.md) | Leak-safe dataset build, VideoMAE fine-tune, event-level evaluation, model trigger added to `AnyTrigger` | Part A done **and** 60 snatch segments from ≥ 40 sources, ≥ 2 h normal | Test event recall ≥ 0.90 on the same split Gemini was benchmarked on; Step 1 ≤ 2 s |
 | 3. Evidence, scale, feedback | [phase3](2026-10-11-cctv-alert-phase3-evidence-scale.md) | Benchmark report, cameras-per-GPU scale test, Results page, guard feedback → training data, frozen demo build | Phase 1 done (Phase 2 optional) | Reports generated with the real verifier; 3 clean rehearsals; tag `v1.0-demo` |
 
 ## Order and parallel work
@@ -22,7 +23,7 @@ Week-by-week order (solo):
 ```
 
 - **Start filming and collecting clips while Phase 1 is being built.** Data collection is the long pole for Phase 2.
-- **If time runs short, skip Phase 2.** Phase 3 still works with `TRIGGERS=rule`. Spec §12: the action model is the first thing cut.
+- **If time runs short, skip Phase 2B (training).** Phase 3 works with `TRIGGERS=rule|llm|both`. Spec §12: the action model is the first thing cut.
 - Phase 3 Task 4 (feedback loop) feeds back into Phase 2 Tasks 2–4 for a retraining round.
 
 ## Things only you can provide

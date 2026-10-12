@@ -57,7 +57,9 @@ Tests: `cd backend; uv run pytest` and `cd frontend; npx vitest run`. The one GP
 
 | Variable | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` | Enables the Claude verifier. Missing: the mock verifier is used. |
+| `GEMINI_API_KEY` | Enables the Gemini verifier (takes priority over Claude). Untested against the live API; fake client only. |
+| `GEMINI_MODEL` | Default `gemini-2.5-flash`. JSON-schema structured output, thinking budget 0. |
+| `ANTHROPIC_API_KEY` | Enables the Claude verifier when no Gemini key is set. Neither key set: the mock verifier is used. |
 | `CLAUDE_MODEL` | Default `claude-opus-5-5`. Requested with effort `low`, structured output, and server-side refusal fallback. |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `POLICE_NUMBER` | All four set: real call and SMS. Otherwise the dry-run escalator simulates them. |
 | `GATE_NUMBER` | Gate guard SMS. Missing: that step shows as skipped. |
@@ -144,7 +146,7 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 
 1. Phone on a hotspot (the demo needs no internet except Claude and Twilio) and the laptop on power.
 2. Twilio: verify the destination numbers (trial accounts can only call verified numbers), enable **Malaysia** under Voice Geo permissions, and set `TWILIO_*`, `POLICE_NUMBER`, `GATE_NUMBER`. Place one test call before going on stage.
-3. `ANTHROPIC_API_KEY` set, and run `uv run python scripts/verify_once.py data/case-2.mp4 6.4` once (expect `is_incident: true`, latency 6 s or less).
+3. `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) set, and run `uv run python scripts/verify_once.py data/case-2.mp4 6.4` once (expect `is_incident: true`, latency 6 s or less).
 4. Replay files are fresh (`scripts/precompute.py` for every analysed camera) if you plan to run `MODE=replay`.
 5. Browser volume on, and click the page once so the browser allows the alert tone to play.
 6. Clear old demo incidents: stop the backend and delete `backend/data/incidents.db` and `backend/data/snapshots/`.
