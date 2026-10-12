@@ -61,12 +61,12 @@ beforeEach(() => {
 
 describe("AlertCard", () => {
   it("renders summary, exit and confidence", () => {
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} busy={false} />);
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
     expect(screen.getByText(/snatched a bag from a woman/)).toBeInTheDocument();
     expect(screen.getByText(/Gate B/)).toBeInTheDocument();
     expect(screen.getByText(/East/)).toBeInTheDocument(); // escape row: "East → Gate B"
     expect(screen.getByText("93%")).toBeInTheDocument();
-    expect(screen.getByText(/CAM-02/)).toBeInTheDocument();
+    expect(screen.getByText(/CAM-02 · Elmina Shoplot Row B/)).toBeInTheDocument();
     expect(screen.getByText(/Jalan Limau Manis/)).toBeInTheDocument();
     expect(screen.getByText(/dark helmet/)).toBeInTheDocument();
     expect(screen.getAllByText(/black motorcycle/).length).toBeGreaterThanOrEqual(1); // summary and vehicle row
@@ -74,7 +74,7 @@ describe("AlertCard", () => {
 
   it("shows the replay clip limited to the incident window and the snapshots", () => {
     const { container } = render(
-      <AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} busy={false} />,
+      <AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />,
     );
     const video = container.querySelector("video")!;
     expect(video.getAttribute("src")).toMatch(/\/media\/clips\/case-2\.mp4#t=2\.4,9\.4$/);
@@ -84,7 +84,7 @@ describe("AlertCard", () => {
 
   it("loops the replay back to the clip start after clip_end", () => {
     const { container } = render(
-      <AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} busy={false} />,
+      <AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />,
     );
     const video = container.querySelector("video")!;
     video.currentTime = 9.5;
@@ -94,7 +94,7 @@ describe("AlertCard", () => {
 
   it("shows unverified badge when verification is null", () => {
     const incident = makeIncident({ verification: null, verification_error: "AI verification unavailable: timed out" });
-    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} busy={false} />);
+    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
     expect(screen.getByText("AI verification unavailable: operator to confirm")).toBeInTheDocument();
     expect(screen.getByAltText(/suspect snapshot/i)).toBeInTheDocument(); // still shows evidence
     expect(screen.getByRole("button", { name: /approve & escalate/i })).toBeEnabled();
@@ -102,33 +102,33 @@ describe("AlertCard", () => {
   });
 
   it("does not show the unverified badge for a verified incident", () => {
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} busy={false} />);
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
     expect(screen.queryByText(/AI verification unavailable/)).not.toBeInTheDocument();
   });
 
   it("buttons disabled while busy", () => {
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} busy />);
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy />);
     expect(screen.getByRole("button", { name: /approve & escalate/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /reject/i })).toBeDisabled();
   });
 
   it("approve calls onApprove once even on double click", async () => {
     const onApprove = vi.fn();
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={onApprove} onReject={noop} busy={false} />);
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={onApprove} onReject={noop} onClose={noop} busy={false} />);
     await userEvent.dblClick(screen.getByRole("button", { name: /approve & escalate/i }));
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
   it("reject calls onReject once", async () => {
     const onReject = vi.fn();
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={onReject} busy={false} />);
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={onReject} onClose={noop} busy={false} />);
     await userEvent.click(screen.getByRole("button", { name: /reject \(false positive\)/i }));
     expect(onReject).toHaveBeenCalledTimes(1);
   });
 
   it("allows another attempt after a failed request (busy true then false while still pending)", async () => {
     const onApprove = vi.fn();
-    const props = { incident: makeIncident(), camera, onApprove, onReject: noop };
+    const props = { incident: makeIncident(), camera, onApprove, onReject: noop, onClose: noop };
     const { rerender } = render(<AlertCard {...props} busy={false} />);
     await userEvent.click(screen.getByRole("button", { name: /approve & escalate/i }));
     rerender(<AlertCard {...props} busy />);
@@ -140,7 +140,7 @@ describe("AlertCard", () => {
   it("plays the alert sound once per new pending incident", () => {
     const calls = () => vi.mocked(HTMLMediaElement.prototype.play).mock.calls.length;
     const before = calls();
-    const props = { camera, onApprove: noop, onReject: noop, busy: false };
+    const props = { camera, onApprove: noop, onReject: noop, onClose: noop, busy: false };
     const { rerender } = render(<AlertCard incident={makeIncident()} {...props} />);
     expect(calls()).toBe(before + 1);
     rerender(<AlertCard incident={makeIncident({ metrics: { shown_s: 3 } })} {...props} />);
@@ -151,10 +151,60 @@ describe("AlertCard", () => {
 
   it("after approval shows the escalation timeline instead of the buttons", () => {
     const incident = makeIncident({ status: "ESCALATED", escalation: [step("police_call", "ringing")] });
-    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} busy={false} />);
+    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
     expect(screen.queryByRole("button", { name: /approve & escalate/i })).not.toBeInTheDocument();
     expect(screen.getByText("Police call")).toBeInTheDocument();
     expect(screen.getByText(/Ringing/)).toBeInTheDocument();
+  });
+
+  it("A approves and R rejects from the keyboard, once each", async () => {
+    const onApprove = vi.fn();
+    const onReject = vi.fn();
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={onApprove} onReject={onReject} onClose={noop} busy={false} />);
+    await userEvent.keyboard("a");
+    await userEvent.keyboard("a");
+    expect(onApprove).toHaveBeenCalledTimes(1); // the double-action guard also covers the keyboard
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  it("R rejects, and shortcuts are ignored with a modifier held", async () => {
+    const onApprove = vi.fn();
+    const onReject = vi.fn();
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={onApprove} onReject={onReject} onClose={noop} busy={false} />);
+    await userEvent.keyboard("{Control>}a{/Control}");
+    expect(onApprove).not.toHaveBeenCalled();
+    await userEvent.keyboard("r");
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows elapsed time since detection and how many alerts are waiting", () => {
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} queueCount={2} />);
+    expect(screen.getByText(/Detected/)).toBeInTheDocument();
+    expect(screen.getByText("+2 more waiting")).toBeInTheDocument();
+  });
+
+  it("does not offer the queue chip or shortcuts once approved", async () => {
+    const onApprove = vi.fn();
+    const incident = makeIncident({ status: "ESCALATED", escalation: [step("police_call", "ringing")] });
+    render(<AlertCard incident={incident} camera={camera} onApprove={onApprove} onReject={noop} onClose={noop} busy={false} queueCount={2} />);
+    expect(screen.queryByText(/more waiting/)).not.toBeInTheDocument();
+    await userEvent.keyboard("a");
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it("has no close button while pending, so the operator must decide", () => {
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
+    expect(screen.queryByRole("button", { name: /close alert/i })).not.toBeInTheDocument();
+  });
+
+  it("after approval the close button and Escape both call onClose", async () => {
+    const onClose = vi.fn();
+    const incident = makeIncident({ status: "ESCALATED", escalation: [step("police_call", "ringing")] });
+    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} onClose={onClose} busy={false} />);
+    await userEvent.click(screen.getByRole("button", { name: /close alert/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 

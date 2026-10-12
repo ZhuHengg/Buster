@@ -68,30 +68,6 @@ body {
   animation: rec-blink 1.4s steps(1) infinite;
 }
 
-/* "signal lost" static */
-@keyframes static-shift {
-  0% {
-    background-position: 0 0;
-  }
-  25% {
-    background-position: -37px 21px;
-  }
-  50% {
-    background-position: 13px -44px;
-  }
-  75% {
-    background-position: -61px -9px;
-  }
-  100% {
-    background-position: 0 0;
-  }
-}
-.signal-static {
-  background-color: #0b0e13;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
-  animation: static-shift 0.35s steps(1) infinite;
-}
-
 @keyframes card-in {
   from {
     transform: translateX(32px);
@@ -110,4 +86,22 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* visible keyboard focus everywhere; the alert panel takes programmatic focus only (tabindex -1) */
+:focus-visible:not([tabindex="-1"]) {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-in,
+  .rec-dot {
+    animation: none;
+  }
+  /* keep the alerting tile obvious without the pulse */
+  .tile-alerting {
+    animation: none;
+    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.95), 0 0 12px rgba(239, 68, 68, 0.4);
+  }
 }

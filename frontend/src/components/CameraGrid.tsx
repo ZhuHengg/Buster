@@ -33,13 +33,19 @@ export interface CameraGridProps {
   cameras: CameraConfig[];
   state: CmsState;
   connected: boolean;
+  pendingCount?: number;
 }
 
-export default function CameraGrid({ cameras, state, connected }: CameraGridProps) {
+export default function CameraGrid({ cameras, state, connected, pendingCount = 0 }: CameraGridProps) {
   const alertCamera = state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CmsHeader connected={connected}>
+        {pendingCount > 0 && (
+          <span className="rounded border border-accent/60 bg-accent/10 px-2 py-0.5 font-medium text-red-300">
+            {pendingCount} pending {pendingCount === 1 ? "alert" : "alerts"}
+          </span>
+        )}
         <Link href="/incidents" className="text-slate-200 underline-offset-4 hover:underline">
           Incidents
         </Link>

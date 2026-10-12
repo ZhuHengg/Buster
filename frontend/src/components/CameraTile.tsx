@@ -103,10 +103,24 @@ export default function CameraTile({ camera, detections, sync, alerting }: Camer
       data-testid={`tile-${camera.id}`}
     >
       {lost ? (
-        <div className="signal-static absolute inset-0 flex items-center justify-center">
-          <span className="rounded bg-black/70 px-3 py-1 font-mono text-sm tracking-[0.3em] text-muted">
-            SIGNAL LOST
-          </span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0b0e13] text-muted">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M2 2l20 20" />
+            <path d="M7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-1" />
+            <path d="M9.5 4h5L16 7h4a2 2 0 0 1 2 2v7.5" />
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+          </svg>
+          <span className="font-mono text-xs tracking-[0.3em]">SIGNAL LOST</span>
         </div>
       ) : (
         <>
@@ -129,7 +143,7 @@ export default function CameraTile({ camera, detections, sync, alerting }: Camer
           {camera.id} · {camera.name}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-slate-100">
-          {!lost && <span className="rec-dot inline-block h-2 w-2 rounded-full bg-accent" aria-label="recording" />}
+          {!lost && <span role="img" aria-label="recording" className="inline-block h-2 w-2 rounded-full bg-accent" />}
           <span className="mono-time">{clock}</span>
         </span>
       </div>
