@@ -118,7 +118,7 @@ class GeminiTrigger:
         s = self.settings
         if gen != self._gen or fd.pts - request_pts > s.screen_max_lag_s or fd.pts < self._cooldown_until:
             return None
-        if not result.suspicious or result.score < s.screen_threshold:
+        if not result.is_act or result.score < s.screen_threshold:
             return None
         self._cooldown_until = fd.pts + self.cooldown_s
         return CandidateEvent(

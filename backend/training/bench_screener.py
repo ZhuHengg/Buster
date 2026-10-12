@@ -36,7 +36,7 @@ class BenchmarkIncomplete(Exception):
 
 
 def step_score(result: ScreenResult) -> float:
-    return result.score if result.suspicious else NO_SCORE
+    return result.score if result.is_act else NO_SCORE
 
 
 class TooManyCalls(Exception):

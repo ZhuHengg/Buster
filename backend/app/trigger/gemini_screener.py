@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from google import genai
@@ -17,6 +17,10 @@ class ScreenUnavailable(Exception):
     """The screening call failed; the caller should back off, not crash."""
 
 
+Phase = Literal["in_progress", "just_happened", "aftermath", "none"]
+ACT_PHASES: tuple[str, ...] = ("in_progress", "just_happened")
+
+
 class ScreenResult(BaseModel):
     suspicious: bool
     score: float = Field(ge=0.0, le=1.0)
@@ -24,6 +28,13 @@ class ScreenResult(BaseModel):
     suspect_track_ids: list[int]
     motorcycle_track_id: int | None = None
     victim_track_id: int | None = None
+    phase: Phase = "in_progress"  # required in the schema Gemini fills; the default only serves old cached results
+
+    @property
+    def is_act(self) -> bool:
+        """True only while the theft itself is on screen. The aftermath (victim on the ground, people helping)
+        is not the act and must not raise or renew an alert."""
+        return self.suspicious and self.phase in ACT_PHASES
 
 
 def build_screen_prompt(camera: CameraConfig) -> str:
@@ -33,12 +44,21 @@ def build_screen_prompt(camera: CameraConfig) -> str:
         "not have numbered boxes (#id) drawn on people and motorcycles.\n"
         "Decide whether a snatch theft is happening or has just happened: a person, usually on a "
         "motorcycle, grabs a bag, phone or chain from a pedestrian and rides or runs away.\n"
-        "Answer suspicious=true whenever this is plausible. A second reviewer removes false alarms, "
-        "so a missed theft is worse than a false alarm.\n"
+        "Set phase to one of:\n"
+        "- in_progress: the grab, the struggle or the thief running or riding off is visible in these frames.\n"
+        "- just_happened: the grab happened in these frames or just before them and the thief is still leaving.\n"
+        "- aftermath: the thief is already gone or out of the action, and what remains is people reacting: "
+        "the victim on the ground or standing up, bystanders running over or helping, people looking around.\n"
+        "- none: nothing like a theft.\n"
+        "Answer suspicious=true for in_progress and just_happened whenever the theft is plausible. A second "
+        "reviewer removes false alarms, so a missed theft is worse than a false alarm. For aftermath and none "
+        "answer suspicious=false: the alert was already raised for the act.\n"
         "Normal traffic, people walking, parking, a rider stopping to talk, and people handing "
         "things to each other are not suspicious.\n"
         "score is your confidence from 0 to 1. Copy suspect, motorcycle and victim track ids from "
-        "the visible #id labels only; leave the lists empty and the ids null if no labels are visible.\n"
+        "the visible #id labels only. Suspects are only the people who commit the theft or ride away with "
+        "the stolen item; the victim, bystanders and anyone helping the victim are never suspects. Leave the "
+        "lists empty and the ids null if no labels are visible.\n"
         "reason is one short sentence."
     )
 

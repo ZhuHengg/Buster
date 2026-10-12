@@ -238,3 +238,37 @@ def test_does_not_screen_until_the_buffer_holds_enough_footage():
     assert early == [] and screener.calls == 0
     later = feed(trig, buf, scene(t_end=3.0, t_start=1.0))
     assert screener.calls >= 1 and later and later[0].pts >= 1.5
+
+
+def act(phase: str, suspicious: bool = True, score: float = 0.9) -> ScreenResult:
+    return ScreenResult(suspicious=suspicious, score=score, reason="r", suspect_track_ids=[2], phase=phase)
+
+
+def test_only_the_act_fires_not_the_aftermath():
+    for phase in ("aftermath", "none"):
+        trig, buf = make(FakeScreener(result=act(phase)))
+        assert feed(trig, buf, scene(t_end=3.0)) == [], phase
+    for phase in ("in_progress", "just_happened"):
+        trig, buf = make(FakeScreener(result=act(phase)))
+        assert len(feed(trig, buf, scene(t_end=3.0))) == 1, phase
+
+
+def test_aftermath_answer_does_not_start_a_quiet_period():
+    # people helping the victim must not silence the camera for the next real event
+    screener = FakeScreener(result=act("aftermath"))
+    trig, buf = make(screener, screen_interval_s=1.0)
+    feed(trig, buf, scene(t_end=3.0))
+    screener.result = act("in_progress")
+    assert len(feed(trig, buf, scene(t_start=3.0, t_end=5.0))) == 1
+
+
+def test_no_screening_calls_during_the_quiet_period_after_a_candidate():
+    screener = FakeScreener(result=act("in_progress"))
+    trig, buf = make(screener, screen_interval_s=1.0)
+    trig.cooldown_s = 30.0
+    first = feed(trig, buf, scene(t_end=3.0))
+    calls = screener.calls
+    assert len(first) == 1
+    assert feed(trig, buf, scene(t_start=3.0, t_end=20.0)) == []
+    assert screener.calls == calls  # no Gemini calls, so no quota spent while quiet
+    assert len(feed(trig, buf, scene(t_start=20.0, t_end=40.0))) == 1  # alert again after the quiet period

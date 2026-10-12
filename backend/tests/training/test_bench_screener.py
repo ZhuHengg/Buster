@@ -137,3 +137,11 @@ def test_bench_persists_splits_and_reuses_them(dataset):
     run(split="val", screener=FakeScreener(), **kwargs(dataset))
     saved = json.loads((dataset["tmp"] / "splits.json").read_text())
     assert set(saved.values()) <= {"train", "val", "test"} and len(saved) == 6
+
+
+def test_step_score_aftermath_is_no_score():
+    import math
+
+    after = ScreenResult(suspicious=True, score=0.99, reason="x", suspect_track_ids=[], phase="aftermath")
+    act = ScreenResult(suspicious=True, score=0.7, reason="x", suspect_track_ids=[], phase="just_happened")
+    assert step_score(after) == -math.inf and step_score(act) == 0.7

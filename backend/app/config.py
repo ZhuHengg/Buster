@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     screen_interval_s: float = 3.0
     screen_frames: int = 6
     screen_max_lag_s: float = 6.0
+    alert_quiet_s: float = 30.0  # after a candidate, the camera raises no new one (and makes no Gemini calls) for this long
+    suspect_flag_s: float = 6.0  # a track stays flagged red this long after a candidate named it
     triggers: Literal["rule", "llm", "both"] = "both"
     analyse_fps: float | None = None  # detect at most this many frames/s per camera; None = every frame
     twilio_account_sid: str | None = None

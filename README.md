@@ -31,6 +31,8 @@ Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase2-action-model.md](docs
 | Benchmark on the labelled dataset (`python -m training.bench_screener --split val|test`) | **Not run.** It needs the downloaded dataset in `backend/data/datasets/`, labelled with `training/ingest.py` (use `--whole-video-label snatch` for pre-trimmed clips) and `training/label_tool.py`, and a Gemini key. Results will be added here. |
 | Both demo clips through the Gemini trigger (2026-10-12, default threshold 0.5, **not tuned**, `TRIGGERS=llm`, Gemini verifier, `scripts/benchmark.py --set demo`) | **`case-1` (on-foot snatch at about 12 to 16 s): detected.** Candidate at 14.3 s (2.3 s after the window start), Step 1 call 2.6 s, Gemini verification 3.7 s, plus 0.3 s push: about **8.9 s** to the alert card. One run, so this is one sample, not a median. It also raised 2 more candidates later in the clip (Step 2 removed one, one reached the guard); the window rule counts them as false, and I have not checked whether they are the chase or aftermath. **`case-2` (motorcycle snatch at about 5.4 to 8.4 s): missed.** Its only candidate was at 17.9 s, the aftermath (a bystander walks up to the victim on the ground), and Step 2 confirmed it. Gemini answers vary between runs. Do not tune the prompt or threshold on these clips: pick the threshold on the labelled val split with `training.bench_screener`. |
 
+Gemini also reports a `phase` (in_progress, just_happened, aftermath, none) and only the first two raise a candidate; the Step 2 prompt rejects frames that show only the aftermath. This reduces but does not remove aftermath alerts: on `case-2` Gemini still sometimes flags the victim lying on the road (at 17.9 s in one run, 23.9 s in another). On `case-1` it now raises exactly one candidate, the real snatch.
+
 How it works: every `SCREEN_INTERVAL_S` of video time, while a person is in view, the last 3 s of the camera's frame buffer (6 JPEGs, 640 px wide, with YOLO boxes drawn) go to Gemini on a background thread. A score at or above `SCREEN_THRESHOLD` raises a candidate and the usual Step 2 verification follows. Rate-limit or API errors pause screening for 30 s and never stop the video loop.
 
 Things to know:
@@ -126,6 +128,8 @@ Tests: `cd backend; uv run pytest` and `cd frontend; npx vitest run`. The one GP
 | `GATE_NUMBER` | Gate guard SMS. Missing: that step shows as skipped. |
 | `MODE` | `live` (default) or `replay` |
 | `OPERATOR_NAME` | Backend default for the operator on a decision. The CMS sends its own (see below). |
+| `ALERT_QUIET_S` | After a camera raises a candidate it raises no new one, and makes no Gemini calls, for this many seconds (default 30). Stops the same snatch alerting again for the aftermath. Applies to Rule B, the Gemini trigger and the combined trigger. |
+| `SUSPECT_FLAG_S` | How long a track stays red after a candidate names it (default 6 s), so people who walk up to the victim later are not shown as suspects. |
 | `ANALYSE_FPS` | Detect at most this many frames per second per camera (default: every frame). Skipped frames are still buffered for keyframes. 10 is the lowest safe value for Rule B. |
 | `DB_PATH`, `DATA_DIR`, `REPORTS_DIR` | Override the incident database, the clip folder and the folder `/api/reports` reads |
 

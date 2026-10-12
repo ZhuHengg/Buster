@@ -87,10 +87,16 @@ class CameraPipeline:
         self.service, self.hub, self.buffer = service, hub, buffer
         self.source = source
         self._recent: deque[FrameDetections] = deque(maxlen=200)
-        self._suspects: set[int] = set()
+        self._suspect_until: dict[int, float] = {}  # track id -> clip time until which it is flagged red
         self._tasks = _TaskSet()
         self._last_analysed_pts: float | None = None
         self._last_fd: FrameDetections | None = None
+
+    def _active_suspects(self, pts: float) -> set[int]:
+        """Tracks flagged right now. A flag lasts `suspect_flag_s` after a candidate named the track, so
+        bystanders who walk up to the victim later are not painted as suspects."""
+        self._suspect_until = {i: until for i, until in self._suspect_until.items() if until >= pts}
+        return set(self._suspect_until)
 
     def _due(self, pts: float) -> bool:
         """True when this frame should be analysed: at most `analyse_fps` per second of clip time."""
@@ -125,7 +131,7 @@ class CameraPipeline:
                 self._last_analysed_pts, self._last_fd = pts, fd
                 self.buffer.push(pts, loop, frame, fd)
                 self._recent.append(fd)
-                await self.hub.broadcast(detections_msg(fd, self._suspects))
+                await self.hub.broadcast(detections_msg(fd, self._active_suspects(fd.pts)))
                 if last_sync_sec != int(pts):
                     last_sync_sec = int(pts)
                     await self.hub.broadcast(sync_msg(self.camera.id, loop, pts))
@@ -144,7 +150,7 @@ class CameraPipeline:
         self.trigger.reset()
         self.buffer.clear()
         self._recent.clear()
-        self._suspects.clear()  # track IDs restart with the loop
+        self._suspect_until.clear()  # track IDs restart with the loop
         self._last_analysed_pts = self._last_fd = None  # pts restarts at 0
 
     async def _on_candidate(self, candidate: CandidateEvent) -> None:
@@ -157,7 +163,9 @@ class CameraPipeline:
         direction: tuple[str | None, str | None] = (None, None)
         if candidate.motorcycle_track_id is not None:
             direction = escape_direction(list(self._recent), candidate.motorcycle_track_id, self.camera)
-        self._suspects |= _suspect_ids(candidate)
+        until = (self._recent[-1].pts if self._recent else candidate.pts) + self.settings.suspect_flag_s
+        for track_id in _suspect_ids(candidate):
+            self._suspect_until[track_id] = until
         incident = await self.service.open(candidate, self.camera, self.camera.clip or "", snapshots)
         self._tasks.spawn(self._verify(incident, candidate, keyframes, direction))
 
@@ -190,10 +198,12 @@ class ReplayPipeline:
         realtime: bool = True,
         max_loops: int | None = None,
         verify_delay: float = 2.0,
+        suspect_flag_s: float = 6.0,
     ):
         self.camera, self.path = camera, Path(precomputed_path)
         self.service, self.hub = service, hub
         self.realtime, self.max_loops, self.verify_delay = realtime, max_loops, verify_delay
+        self.suspect_flag_s = suspect_flag_s
         self._tasks = _TaskSet()
 
     async def run(self) -> None:
@@ -207,7 +217,7 @@ class ReplayPipeline:
         loop = 0
         try:
             while self.max_loops is None or loop < self.max_loops:
-                suspects: set[int] = set()
+                suspect_until: dict[int, float] = {}
                 pending = list(candidates)
                 last_sec: int | None = None
                 started = time.perf_counter()
@@ -217,13 +227,15 @@ class ReplayPipeline:
                         delay = started + fd.pts - time.perf_counter()
                         if delay > 0:
                             await asyncio.sleep(delay)
-                    await self.hub.broadcast(detections_msg(fd, suspects))
+                    suspect_until = {i: u for i, u in suspect_until.items() if u >= fd.pts}
+                    await self.hub.broadcast(detections_msg(fd, set(suspect_until)))
                     if last_sec != int(fd.pts):
                         last_sec = int(fd.pts)
                         await self.hub.broadcast(sync_msg(self.camera.id, loop, fd.pts))
                     while pending and pending[0]["candidate"]["pts"] <= fd.pts:
                         entry = pending.pop(0)
-                        suspects |= await self._inject(entry, loop)
+                        for track_id in await self._inject(entry, loop):
+                            suspect_until[track_id] = fd.pts + self.suspect_flag_s
                 if self.realtime:
                     delay = started + loop_len - time.perf_counter()
                     if delay > 0:

@@ -92,3 +92,21 @@ def test_any_trigger_cooldown_cleared_on_loop_change():
     assert trig.update(fd(1.0, loop=0)) is not None
     a.fire_at = {2.0}
     assert trig.update(fd(2.0, loop=1)) is not None  # clip wrapped: pts restarted, cooldown must too
+
+
+def test_quiet_period_setting_reaches_every_trigger():
+    # after an alert the camera stays quiet for ALERT_QUIET_S: Rule B, the Gemini trigger (which also
+    # stops calling Gemini, saving quota) and the combined trigger all use the same number
+    q = 37.0
+    rule = make_trigger(Settings(_env_file=None, triggers="rule", alert_quiet_s=q), CAMERA, FrameBuffer())
+    assert rule.params.cooldown_s == q
+    llm = make_trigger(Settings(_env_file=None, triggers="llm", gemini_api_key="k", alert_quiet_s=q), CAMERA,
+                       FrameBuffer())
+    assert llm.cooldown_s == q
+    both = make_trigger(Settings(_env_file=None, triggers="both", gemini_api_key="k", alert_quiet_s=q), CAMERA,
+                        FrameBuffer())
+    assert both.cooldown_s == q and both.triggers[0].params.cooldown_s == q and both.triggers[1].cooldown_s == q
+
+
+def test_default_quiet_period_is_longer_than_the_aftermath_of_a_snatch():
+    assert Settings(_env_file=None).alert_quiet_s >= 30.0

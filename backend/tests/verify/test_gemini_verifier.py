@@ -80,3 +80,16 @@ async def test_gemini_verifier_schema_failure_raises_unavailable(gemini_settings
     fake = FakeModels(text='{"is_incident": true}')
     with pytest.raises(VerificationUnavailable, match="schema"):
         await GeminiVerifier(gemini_settings, client=client_for(fake)).verify(candidate, FRAMES, camera)
+
+
+def test_verification_prompt_rejects_aftermath_and_never_names_helpers_as_suspects():
+    from datetime import datetime, timezone
+
+    from app.config import CameraConfig
+    from app.models import CandidateEvent
+    from app.verify.prompt import build_prompt
+
+    cand = CandidateEvent(camera_id="C", pts=1.0, loop=0, trigger="llm", suspect_track_ids=[], detected_at=datetime.now(timezone.utc))
+    p = build_prompt(cand, CameraConfig(id="C", name="n", location="l")).lower()
+    assert "aftermath" in p and "is_incident false" in p
+    assert "helping" in p and "never" in p

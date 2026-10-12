@@ -265,3 +265,25 @@ async def test_replay_injects_candidate_once_per_loop_and_marks_suspects(camera,
     assert any(t["suspect"] for t in dets[29]["tracks"])
     assert not any(t["suspect"] for t in dets[0]["tracks"])
     assert not any(t["suspect"] for t in dets[30]["tracks"])  # loop 1 starts clean
+
+
+# ---- suspect flags expire ------------------------------------------------------------------------
+async def test_suspect_flags_expire_after_suspect_flag_s(camera, tmp_path, service, hub):
+    # candidate on the 10th frame (pts 0.9); flagged for 1 s, so frames after pts 1.9 are clean again
+    pipe = make_pipeline(camera, tmp_path, service, hub, make_source(60), suspect_flag_s=1.0)
+    await pipe.run()
+    dets = hub.of_type("detections")
+    flagged = [d["pts"] for d in dets if any(t["suspect"] for t in d["tracks"])]
+    assert flagged and min(flagged) >= 0.9 - 1e-6  # nothing is flagged before the candidate
+    assert max(flagged) <= 1.9 + 1e-6              # and it stops: bystanders who walk up later stay unflagged
+    assert not any(t["suspect"] for t in dets[-1]["tracks"])
+
+
+async def test_replay_suspect_flags_expire_too(camera, tmp_path, service, hub):
+    path = write_precomputed(tmp_path / "precomputed", camera)  # candidate at pts 1.0, clip is 3 s
+    await ReplayPipeline(camera, path, service, hub, realtime=False, max_loops=1, verify_delay=0.0,
+                         suspect_flag_s=0.5).run()
+    dets = hub.of_type("detections")
+    # the candidate (pts 1.0) is injected after that frame is sent, so flags start on frame 11 and last 0.5 s
+    assert any(t["suspect"] for t in dets[12]["tracks"])
+    assert not any(t["suspect"] for t in dets[29]["tracks"])

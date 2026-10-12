@@ -132,3 +132,28 @@ def test_score_above_one_is_schema_failure(settings, camera):
 def test_prompt_mentions_camera_context(camera):
     prompt = build_screen_prompt(camera)
     assert "Jalan Limau Manis" in prompt and "reviewer" in prompt
+
+
+def test_prompt_separates_the_act_from_the_aftermath():
+    p = build_screen_prompt(CameraConfig(id="C", name="n", location="l")).lower()
+    assert "aftermath" in p and "in_progress" in p and "just_happened" in p
+    assert "helping" in p  # bystanders helping the victim are not suspects
+
+
+def test_result_fires_only_for_the_act_phases():
+    from app.trigger.gemini_screener import ScreenResult
+
+    def r(phase, suspicious=True):
+        return ScreenResult(suspicious=suspicious, score=0.9, reason="x", suspect_track_ids=[], phase=phase)
+
+    assert r("in_progress").is_act and r("just_happened").is_act
+    assert not r("aftermath").is_act and not r("none").is_act and not r("in_progress", False).is_act
+
+
+def test_phase_is_required_in_the_schema_gemini_must_fill():
+    from app.trigger.gemini_screener import ScreenResult
+    from app.verify.claude_verifier import _strict_schema
+
+    schema = _strict_schema(ScreenResult)
+    assert "phase" in schema["required"]
+    assert set(schema["properties"]["phase"]["enum"]) == {"in_progress", "just_happened", "aftermath", "none"}
