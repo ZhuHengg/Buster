@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     claude_model: str = "claude-opus-5-5"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    gemini_screen_model: str | None = None  # step 1 screener; falls back to gemini_model
+    screen_threshold: float = 0.5
+    screen_interval_s: float = 3.0
+    screen_frames: int = 6
+    screen_max_lag_s: float = 6.0
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None

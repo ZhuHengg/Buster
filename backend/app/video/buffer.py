@@ -9,7 +9,10 @@ SUSPECT_COLOUR = (0, 0, 255)
 BOX_COLOUR = (255, 255, 255)
 
 
-def _jpeg(img: np.ndarray, quality: int = 85) -> bytes:
+def _jpeg(img: np.ndarray, quality: int = 85, max_width: int | None = None) -> bytes:
+    if max_width is not None and img.shape[1] > max_width:
+        scale = max_width / img.shape[1]
+        img = cv2.resize(img, (max_width, max(1, round(img.shape[0] * scale))), interpolation=cv2.INTER_AREA)
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:
         raise RuntimeError("jpeg encode failed")
@@ -39,7 +42,12 @@ class FrameBuffer:
         self._items.clear()
 
     def keyframes(
-        self, center_pts: float, n: int = 8, span: float = 3.0, draw_tracks: bool = True
+        self,
+        center_pts: float,
+        n: int = 8,
+        span: float = 3.0,
+        draw_tracks: bool = True,
+        max_width: int | None = None,
     ) -> list[bytes]:
         if not self._items:
             return []
@@ -52,7 +60,7 @@ class FrameBuffer:
             img = frame.copy()
             if draw_tracks:
                 self._draw(img, det)
-            out.append(_jpeg(img))
+            out.append(_jpeg(img, max_width=max_width))
         return out
 
     @staticmethod

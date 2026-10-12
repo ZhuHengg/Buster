@@ -83,3 +83,14 @@ def test_clear_empties_buffer():
     buf.clear()
     assert len(buf) == 0
     assert buf.best_snapshot(1) is None
+
+
+def test_keyframes_max_width_downscales_and_default_keeps_size():
+    buf = FrameBuffer(max_seconds=10.0)
+    wide = np.full((360, 1280, 3), 90, dtype=np.uint8)
+    for i in range(10):
+        buf.push(i / 10, 0, wide, _det(i / 10))
+    small = cv2.imdecode(np.frombuffer(buf.keyframes(0.5, n=1, span=0.4, max_width=640)[0], np.uint8), cv2.IMREAD_COLOR)
+    full = cv2.imdecode(np.frombuffer(buf.keyframes(0.5, n=1, span=0.4)[0], np.uint8), cv2.IMREAD_COLOR)
+    assert small.shape[1] == 640 and small.shape[0] == 180
+    assert full.shape[1] == 1280
