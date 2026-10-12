@@ -40,6 +40,44 @@ Things to know:
 - **Step 1 latency budget** is now up to 4 s (was 2 s) because of the Gemini round trip. The 10 s snatch to alert card target is unchanged and not yet measured.
 - **Replay mode** (`MODE=replay`) never calls Gemini live: regenerate the replay files with `uv run python scripts/precompute.py CAM-02`, which uses `TRIGGERS` and needs the key.
 
+## Phase 3: evidence, scale and the guard feedback loop (built; real-verifier numbers still to run)
+
+Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase3-evidence-scale.md](docs/superpowers/plans/2026-10-11-cctv-alert-phase3-evidence-scale.md).
+
+| Area | State |
+|---|---|
+| `scripts/benchmark.py`: the real pipeline run offline over the **test split** of `labels.csv` and, separately, the demo clips, written to `backend/reports/benchmark.json` | Built and tested. Run once with the **mock verifier** on the demo clips (case-2 missed, case-1 clean). **No test-set run and no real-verifier run yet** (no labelled dataset, no API key here), so there are no recall or false-alarm numbers to quote. |
+| `scripts/scale_test.py`: N simultaneous camera pipelines per fresh subprocess, stops at the first N that cannot keep up | Built, tested, **run on the real GPU** (below). |
+| `/results` page in the CMS and `GET /api/reports` | Built, tested, checked in headless Chrome. Shows "baseline pending" until `backend/reports/baseline.json` is filled in, and a warning banner when the benchmark used the mock verifier. |
+| `scripts/export_feedback.py`: guard-rejected alerts become `normal` rows in `labels.csv` (origin `feedback`) | Built and tested. No real incident has been rejected yet, so it has exported nothing. |
+| Demo freeze: three dress rehearsals, replay mode with Wi-Fi off, final reports, tag `v1.0-demo` | **Not done.** They need the real verifier, Twilio and a person at the screen. No tag has been made. |
+
+### Scale test result (RTX 3080 Laptop, `case-2.mp4`, 60 s per N, Rule B trigger, mock verifier)
+
+| `--analyse-fps` | N = 1 | N = 2 | N = 4 | Cameras that keep up (mean fps >= 0.9 x target, p90 lag <= 1 s) |
+|---|---|---|---|---|
+| 10 | 9.1 fps | **7.2 fps, stop** | not run | **1** (`backend/reports/scale.json`, committed) |
+| 5 | 4.9 fps | 4.9 fps | **4.0 fps, stop** | **2** |
+
+The detector (YOLO11s detect + track and YOLO11s pose on a 938x1074 frame) costs about 94 ms per analysed frame, so one laptop GPU analyses roughly 15 frames per second in total. **Honest pitch line: one laptop-class GPU watches 1 camera at 10 fps or 2 cameras at 5 fps, so a township with N cameras needs about N GPUs at 10 fps (about N/2 at 5 fps), unless the detector is made faster** (smaller input size, batching frames across cameras, TensorRT) or the analysis moves to a server GPU. That has not been tried.
+
+Lowest safe `ANALYSE_FPS` for Rule B: **10**. `case-2.mp4` cannot be used to time it (Rule B misses that clip), so this was checked on the synthetic snatch scene: at 10 fps both evidence paths (wrist reach, victim jerk) fire within 0.2 s of the full-rate result; below 10 fps the wrist-reach path starts missing its 0.5 s window, and the jerk path holds down to about 5 fps. A test pins the 10 fps behaviour.
+
+### Commands
+
+```powershell
+cd backend
+uv run python scripts/benchmark.py --set both --verifier gemini     # or claude; mock only for a smoke run
+uv run python scripts/scale_test.py --clip data/case-2.mp4 --analyse-fps 10
+uv run python scripts/export_feedback.py                            # guard-rejected incidents -> labels.csv
+uv run python scripts/export_feedback.py --include-ai-rejected --confirm   # review each AI-rejected clip first
+```
+
+- **Benchmark rules.** Test-set sources come from the same saved split as the screener benchmark (`reports/splits.json`). The demo clips are reported in their own table and never mixed into test numbers. A mock-verifier run says so in `meta.verifier`, and the Results page shows a warning banner for it. The Gemini screener threshold is read from `reports/screener_threshold.json` (chosen on the val split) unless `--screen-threshold` is given. The expected snatch window of the demo clip is `expected_event` in `cameras.json` (CAM-02: 5.4 to 8.4 s, taken from the Phase 1 frame analysis; adjust if you re-label).
+- **What a benchmark number means.** Step 1 candidates within 3 s of a labelled event count for it; candidates outside every event are false triggers, and ones Step 2 lets through are false alarms reaching the guard. If Step 2 is unavailable the alert still reaches the guard, so it counts as confirmed (and `verify_errors` counts them). Detection latency is video time from the event start plus the wall time of the Step 1 call, verification is wall time, and the UI push is a constant 0.3 s.
+- **`backend/reports/baseline.json`** is filled by hand from the guard interviews (`{"time_to_notice_s": 90, "source": "guard interviews, n=5"}`). Null or non-numeric values show "baseline pending". Nothing in the code invents a baseline.
+- **Feedback loop.** `export_feedback.py` only appends, skips incidents already exported (`fb_<incident id>`), copies each clip segment under `data/datasets/feedback/`, and refuses incidents from the demo clips. An AI-rejected incident is exported only after a person confirms it was normal; ones marked "real snatch" are listed for hand labelling. After exporting, rebuild the dataset and re-benchmark.
+
 ## Setup
 
 Windows 11, NVIDIA GPU (developed on an RTX 3080 Laptop, 16 GB). The system `python` is 3.14 and must not be used: the PyTorch CUDA wheels target Python 3.12, which uv installs for you.
@@ -88,7 +126,8 @@ Tests: `cd backend; uv run pytest` and `cd frontend; npx vitest run`. The one GP
 | `GATE_NUMBER` | Gate guard SMS. Missing: that step shows as skipped. |
 | `MODE` | `live` (default) or `replay` |
 | `OPERATOR_NAME` | Backend default for the operator on a decision. The CMS sends its own (see below). |
-| `DB_PATH`, `DATA_DIR` | Override the incident database and clip folder |
+| `ANALYSE_FPS` | Detect at most this many frames per second per camera (default: every frame). Skipped frames are still buffered for keyframes. 10 is the lowest safe value for Rule B. |
+| `DB_PATH`, `DATA_DIR`, `REPORTS_DIR` | Override the incident database, the clip folder and the folder `/api/reports` reads |
 
 Frontend (`frontend/.env.local`): `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`), `NEXT_PUBLIC_OPERATOR_NAME` (shown in the header and sent with Approve/Reject), `NEXT_PUBLIC_TOWNSHIP_NAME`.
 
@@ -158,12 +197,21 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 
 | Check | Result |
 |---|---|
-| Backend tests | 183 passed (Phase 1: 106) |
-| Frontend tests | 43 passed |
+| Backend tests | 241 passed (Phase 1: 106, Phase 2A: 196) |
+| Frontend tests | 53 passed, production build OK |
 | Snatch to alert card (spec: 10 s or less), 3 runs | Not measurable: no alert is produced from the snatch clip (see above). Pipeline stage timings are recorded per incident (`metrics`: `candidate_s`, `verified_s`, `shown_s`, `call_placed_s`, seconds since detection) and shown on the Incidents page. |
 | Approval to phone ringing (spec: 5 s or less) | Dry-run escalator: ringing is emitted 0.5 s after approval. Real Twilio timing not measured. |
 | False alarms on the normal clip, live mode, 10 min 23 s (about 10 loops of `case-1.mp4`, both cameras analysed) | 0 incidents of any status (0 PENDING_REVIEW, 0 AI_REJECTED, 0 CANDIDATE), 0 pipeline errors. Caveat: the rule also produces nothing on the snatch clip, so this is a negative control, not evidence of discrimination. |
 | Replay mode vs live | Same message types and fields (`camera.sync`, `detections`, `incident.updated`). Replay emits every frame (about 30 per second per camera), live about 9 to 14. Precomputed: CAM-07 1776 frames, CAM-02 833 frames, 0 candidates each. |
+
+## Known issues
+
+- **Rule B misses the snatch in `case-2.mp4`** (see above), so with `TRIGGERS=rule` the snatch never becomes an alert from live detection. The Gemini screener is the intended fix and has not run against the live API.
+- **No real-verifier, real-Gemini or real-Twilio run** has happened. Benchmarks and timings that depend on them are unmeasured: snatch to alert card (10 s target) and approval to ringing (5 s target).
+- **The benchmark has never run on a labelled test split**, so the Results page KPI tiles show a dash for recall and false alarms until a dataset is labelled and a real-verifier benchmark is run.
+- **Throughput is 1 camera per laptop GPU at 10 fps** (Phase 3 scale test).
+- **Three dress rehearsals and the Wi-Fi-off replay rehearsal have not been done**, and nothing is tagged `v1.0-demo`.
+- The scale test measures Rule B plus the dry-run verifier. A run with the Gemini trigger adds network calls (quota) but no GPU load.
 
 ## Pre-stage checklist
 
@@ -173,7 +221,8 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 4. Replay files are fresh (`scripts/precompute.py` for every analysed camera) if you plan to run `MODE=replay`.
 5. Browser volume on, and click the page once so the browser allows the alert tone to play.
 6. Clear old demo incidents: stop the backend and delete `backend/data/incidents.db` and `backend/data/snapshots/`.
-7. Rehearse: reload the page mid-alert (the card must come back), click Approve twice (second is "Already handled").
+7. `backend/reports/baseline.json` filled from the guard interviews, and `/results` opened once to check it shows real numbers (no mock banner).
+8. Rehearse: reload the page mid-alert (the card must come back), click Approve twice (second is "Already handled").
 
 ## Rules the system enforces
 

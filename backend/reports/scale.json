@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "commit": "e44cadd5bb1c6428f142cef2baa74a4665dd97be-dirty",
+    "generated_at": "2026-10-12T03:12:41.847347+00:00",
+    "triggers": "rule",
+    "verifier": "dry-run",
+    "model": null,
+    "threshold": null,
+    "clip": "case-2.mp4",
+    "clips": [
+      "case-2.mp4"
+    ],
+    "sources": [],
+    "seconds": 60.0,
+    "analyse_fps": 10.0,
+    "gpu": "NVIDIA GeForce RTX 3080 Laptop GPU"
+  },
+  "target_fps": 10.0,
+  "rows": [
+    {
+      "n": 1,
+      "fps_mean": 9.132339470975683,
+      "fps_min": 9.132339470975683,
+      "lag_p90_s": 0.13608837127685547,
+      "cameras_running": 1,
+      "gpu_mem_gb": 0.788823552,
+      "ok": true
+    },
+    {
+      "n": 2,
+      "fps_mean": 7.203777647069269,
+      "fps_min": 7.060317089450296,
+      "lag_p90_s": 0.2108992099761963,
+      "cameras_running": 2,
+      "gpu_mem_gb": 0.908548096,
+      "ok": false
+    }
+  ],
+  "max_cameras_ok": 1,
+  "stopped_reason": "mean fps 7.2 < 0.9 x target 10 at N=2"
+}
