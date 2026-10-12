@@ -68,3 +68,9 @@ def test_baseline_never_invents_a_number(reports_dir):
     assert load_reports(reports_dir)["baseline"]["time_to_notice_s"] is None
     (reports_dir / "baseline.json").write_text(json.dumps({"time_to_notice_s": True}), encoding="utf-8")
     assert load_reports(reports_dir)["baseline"]["time_to_notice_s"] is None  # a bool is not a number
+
+
+def test_non_json_numbers_in_a_report_are_treated_as_unreadable(reports_dir):
+    # Python writes Infinity/NaN for inf/nan; a browser cannot parse them and the API cannot serve them
+    (reports_dir / "scale.json").write_text('{"rows": [{"lag_p90_s": Infinity}]}', encoding="utf-8")
+    assert load_reports(reports_dir)["scale"] is None

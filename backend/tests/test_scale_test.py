@@ -142,3 +142,17 @@ def test_measure_runs_n_pipelines_with_frame_skip(tmp_path):
     assert 7.0 <= r["fps_mean"] <= 10.5  # paced at the 30 fps clip clock, analysed at 10 fps
     assert r["lag_p90_s"] < 0.5
     assert "gpu_mem_gb" in r
+
+
+# ---- review fixes ----------------------------------------------------------------------------
+def test_summarise_with_no_samples_has_no_lag_instead_of_infinity():
+    s = summarise({0: [], 1: []}, warmup_s=0.0)
+    assert s["fps_mean"] == 0.0 and s["lag_p90_s"] is None
+    json.dumps(s, allow_nan=False)  # Infinity is not JSON: it would make GET /api/reports fail
+
+
+def test_stop_reason_when_nothing_was_analysed():
+    reason = stop_reason(row(4, fps_mean=0.0, lag_p90_s=None), target_fps=10.0)
+    assert reason is not None and "no frames" in reason
+    rows, max_ok, _ = run_scale([1, 2], lambda n: row(n) if n == 1 else row(n, fps_mean=0.0, lag_p90_s=None), 10.0)
+    assert max_ok == 1 and rows[-1]["ok"] is False

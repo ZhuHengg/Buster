@@ -43,6 +43,8 @@ def stop_reason(row: dict, target_fps: float) -> str | None:
         return f"CUDA out of memory at N={row['n']}"
     if row.get("error"):
         return f"N={row['n']} failed: {row['error']}"
+    if not row["fps_mean"] or row["lag_p90_s"] is None:
+        return f"no frames were analysed at N={row['n']}"
     if row["fps_mean"] < MEAN_FPS_FRACTION * target_fps - 1e-9:
         return f"mean fps {row['fps_mean']:.1f} < {MEAN_FPS_FRACTION} x target {target_fps:g} at N={row['n']}"
     if row["lag_p90_s"] > LAG_LIMIT_S:
@@ -118,7 +120,7 @@ def summarise(samples: dict[int, list[tuple[float, float]]], warmup_s: float = W
     return {
         "fps_mean": float(np.mean(fps)) if fps else 0.0,
         "fps_min": float(min(fps)) if fps else 0.0,
-        "lag_p90_s": float(np.percentile(lags, 90)) if lags else float("inf"),
+        "lag_p90_s": float(np.percentile(lags, 90)) if lags else None,  # None, not inf: reports are strict JSON
         "cameras_running": sum(1 for f in fps if f > 0),
     }
 

@@ -12,9 +12,13 @@ GENERATED_HINT = (
 )
 
 
+def _reject_constant(name: str):
+    raise ValueError(f"{name} is not valid JSON")  # Python writes Infinity/NaN; browsers and the API cannot use them
+
+
 def _read_json(path: Path) -> dict | None:
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject_constant)
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as exc:

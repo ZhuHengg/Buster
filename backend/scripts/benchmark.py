@@ -186,14 +186,17 @@ def verifier_kind(verifier: Verifier) -> str:
 def build_meta(settings: Settings, verifier: Verifier, threshold: float | None, sources: list[str], clips: list[str]) -> dict:
     """Everything needed to reproduce the run. `verifier` == "mock" marks the numbers as not valid evidence."""
     kind = verifier_kind(verifier)
+    # make_trigger falls back to Rule B alone when there is no Gemini key: report what actually ran
+    screener_ran = settings.triggers != "rule" and bool(settings.gemini_api_key)
     return {
         "commit": git_commit(),
         "generated_at": utc_now(),
-        "triggers": settings.triggers,
+        "triggers": settings.triggers if screener_ran else "rule",
+        "triggers_requested": settings.triggers,
         "verifier": kind,
         "model": {"claude": settings.claude_model, "gemini": settings.gemini_model}.get(kind),
-        "screen_model": (settings.gemini_screen_model or settings.gemini_model) if settings.triggers != "rule" else None,
-        "threshold": threshold,
+        "screen_model": (settings.gemini_screen_model or settings.gemini_model) if screener_ran else None,
+        "threshold": threshold if screener_ran else None,
         "sources": sources,
         "clips": clips,
     }
@@ -246,8 +249,11 @@ def _make_verifier(kind: str, settings: Settings) -> Verifier:
     return make_verifier(settings)
 
 
-def _test_sources(settings: Settings, labels: Path) -> dict[str, list[tuple[float, float]]]:
-    """datasets-relative file -> snatch events, for sources in the held-out test split."""
+def _test_sources(
+    settings: Settings, labels: Path, reports_dir: Path = REPORTS_DIR
+) -> dict[str, list[tuple[float, float]]]:
+    """datasets-relative file -> snatch events, for sources in the held-out test split. The split is saved
+    (as bench_screener does) so labels added later never move a source that was already benchmarked."""
     from training.labels import LABELS_PATH, read_labels
     from training.splits import assert_no_demo_clips, split_sources
 
@@ -255,9 +261,11 @@ def _test_sources(settings: Settings, labels: Path) -> dict[str, list[tuple[floa
     if not rows:
         return {}
     assert_no_demo_clips(rows, load_cameras(settings.data_dir / "cameras.json"), settings.data_dir)
-    splits_path = REPORTS_DIR / "splits.json"
+    splits_path = Path(reports_dir) / "splits.json"
     existing = json.loads(splits_path.read_text(encoding="utf-8")) if splits_path.exists() else {}
     mapping = split_sources(rows, existing=existing)
+    splits_path.parent.mkdir(parents=True, exist_ok=True)
+    splits_path.write_text(json.dumps({**existing, **mapping}, indent=2, sort_keys=True), encoding="utf-8")
     out: dict[str, list[tuple[float, float]]] = {}
     for r in rows:
         if mapping[r.source_id] != "test":

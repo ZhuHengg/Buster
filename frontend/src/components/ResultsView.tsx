@@ -100,7 +100,9 @@ export default function ResultsView() {
                 label="Detected"
                 value={pct(agg?.event_recall_final)}
                 note={
-                  agg
+                  agg?.events === 0
+                    ? "no snatch events in the test split"
+                    : agg
                     ? `${Math.round((agg.event_recall_final ?? 0) * agg.events)} of ${agg.events} events, 95% interval ${pct(agg.event_recall_final_ci95[0])}–${pct(agg.event_recall_final_ci95[1])}`
                     : "needs a test-set benchmark"
                 }

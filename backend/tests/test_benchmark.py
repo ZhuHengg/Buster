@@ -146,7 +146,7 @@ def test_latency_none_without_cards():
 
 # ---- meta ------------------------------------------------------------------------------------
 def test_report_meta_includes_commit_verifier_triggers():
-    s = Settings(_env_file=None, triggers="both", claude_model="claude-x", gemini_model="gem-y")
+    s = Settings(_env_file=None, triggers="both", gemini_api_key="k", claude_model="claude-x", gemini_model="gem-y")
     meta = build_meta(s, MockVerifier(Path("nowhere")), threshold=0.6, sources=["a.mp4"], clips=["case-2.mp4"])
     assert meta["verifier"] == "mock"
     assert meta["triggers"] == "both"
@@ -218,3 +218,44 @@ async def test_demo_skips_cameras_without_analysis(tmp_path):
     cam = CameraConfig(id="CAM-01", name="n", location="l")
     out = await run_demo([cam], tmp_path, lambda c: components(fire=[], confirm=[]))
     assert out["per_clip"] == []
+
+
+# ---- review fixes ----------------------------------------------------------------------------
+def test_meta_records_the_triggers_that_actually_ran():
+    # TRIGGERS=both without a Gemini key silently runs Rule B only (make_trigger): the report must say so
+    s = Settings(_env_file=None, triggers="both", gemini_api_key=None)
+    meta = build_meta(s, MockVerifier(Path("nowhere")), threshold=0.6, sources=[], clips=[])
+    assert meta["triggers"] == "rule" and meta["triggers_requested"] == "both"
+    assert meta["threshold"] is None  # no screener ran, so no screener threshold applies
+    s = Settings(_env_file=None, triggers="both", gemini_api_key="k")
+    meta = build_meta(s, MockVerifier(Path("nowhere")), threshold=0.6, sources=[], clips=[])
+    assert meta["triggers"] == "both" and meta["threshold"] == 0.6
+
+
+def test_test_split_is_persisted_so_later_labels_never_move_a_benchmarked_source(tmp_path):
+    import random
+
+    from scripts.benchmark import _test_sources
+    from training.labels import LabelRow, write_labels
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "cameras.json").write_text("[]", encoding="utf-8")
+    rng = random.Random(0)
+
+    def rows(names: list[str]) -> list[LabelRow]:
+        out = []
+        for n in names:
+            out.append(LabelRow(source_id=n, file=f"online/{n}.mp4", start=1.0, end=3.0, label="snatch",
+                                origin="online", phash=f"{rng.getrandbits(64):016x}"))
+        return out
+
+    first = rows([f"s{i}" for i in range(8)])
+    labels, reports = tmp_path / "labels.csv", tmp_path / "reports"
+    settings = Settings(_env_file=None, data_dir=data)
+    write_labels(labels, first)
+    before = _test_sources(settings, labels, reports)
+    assert before and (reports / "splits.json").exists()
+    write_labels(labels, first + rows([f"t{i}" for i in range(12)]))
+    after = _test_sources(settings, labels, reports)
+    assert set(before) <= set(after)  # nothing already benchmarked as test moved to train or val

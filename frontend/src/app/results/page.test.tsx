@@ -132,6 +132,19 @@ describe("Results page", () => {
     expect(screen.getByText(/mean fps 5\.1 < 0\.9 x target 10/i)).toBeInTheDocument();
   });
 
+  it("does not claim '0 of 0 events' when the test split has no snatch events", async () => {
+    const r = reports();
+    r.benchmark!.test!.aggregate = {
+      ...aggregate, events: 0, event_recall_step1: null, event_recall_final: null, event_recall_final_ci95: [0, 1],
+      detection_to_card_p50_s: null,
+    };
+    await show(r);
+    const t = tile(/^detected$/i);
+    expect(within(t).getByText("—")).toBeInTheDocument();
+    expect(t).toHaveTextContent(/no snatch events in the test split/i);
+    expect(t).not.toHaveTextContent(/0 of 0/);
+  });
+
   it("tells the user when the API cannot be reached", async () => {
     getReports.mockRejectedValue(new Error("down"));
     render(<ResultsPage />);
