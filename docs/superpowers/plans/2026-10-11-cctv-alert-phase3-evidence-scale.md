@@ -67,8 +67,8 @@ README.md                     final runbook + results
 - Test: `backend/tests/test_benchmark.py`
 
 **Interfaces:**
-- Consumes: `Detector`, `make_trigger`, `make_verifier`, `escape_direction`, `FrameBuffer`, `read_labels`, `load_cameras`. **If Phase 2 was skipped:**
-  - `make_trigger` and `read_labels` don't exist yet. First add `make_trigger(settings) -> Trigger` in `app/trigger/__init__.py`, returning `SnatchRule()` for any setting, plus `settings.triggers` defaulting to `"rule"`.
+- Consumes: `Detector`, `make_trigger`, `make_verifier`, `escape_direction`, `FrameBuffer`, `read_labels`, `load_cameras`. **Phase 2A provides** `make_trigger(settings, camera, buffer, blocking=False) -> Trigger` (`settings.triggers` is `rule|llm|both`; use `blocking=True` offline) and `training/events.py`, `training/splits.py`, `training/bench_screener.py`. **If Phase 2 was skipped:**
+  - `make_trigger` and `read_labels` don't exist yet. First add `make_trigger(settings, camera, buffer, blocking=False) -> Trigger` in `app/trigger/__init__.py`, returning `SnatchRule()` for any setting, plus `settings.triggers` defaulting to `"rule"`.
   - Then create a minimal `training/labels.py` with `LabelRow`, `read_labels` and `write_labels` exactly as specified in Phase 2 Task 1, and label the test events with any video player.
 - Produces:
   - `run_source(path, events: list[tuple[float,float]], components) -> SourceResult`, where `SourceResult` has: `source_id`, `hours`, `events`, `hits`, `step1_candidates`, `step1_false`, `step2_confirmed`, `step2_false`, `ai_filtered`, and `latencies: list[{"event_to_candidate_s","candidate_to_verified_s"}]`. The video is processed with realtime=False, but latencies are measured in **video time** for detection plus **wall time** for verification.

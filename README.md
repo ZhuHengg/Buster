@@ -1,6 +1,6 @@
 # Proactive CCTV Alert System
 
-Sime Darby Property University Hackathon 2026, Theme 1 (Safety and Security). Township CCTV clips play as live feeds. YOLO detection plus a rule-based trigger looks for a motorcycle snatch theft. Claude verifies and describes the candidate. A guard approves or rejects it in the Central Monitoring System (CMS). Approval triggers a phone call and SMS.
+Sime Darby Property University Hackathon 2026, Theme 1 (Safety and Security). Township CCTV clips play as live feeds. YOLO detection plus two Step 1 triggers (a rule-based one and a Gemini screener) look for a motorcycle snatch theft. Gemini (or Claude) verifies and describes the candidate. A guard approves or rejects it in the Central Monitoring System (CMS). Approval triggers a phone call and SMS.
 
 - Design: [docs/SOLUTION_PLAN.md](docs/SOLUTION_PLAN.md), problem: [docs/PROBLEM_STATEMENT.md](docs/PROBLEM_STATEMENT.md)
 - Phase 1 plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase1.md](docs/superpowers/plans/2026-10-11-cctv-alert-phase1.md)
@@ -19,6 +19,25 @@ Sime Darby Property University Hackathon 2026, Theme 1 (Safety and Security). To
 | Real Twilio call and SMS | **Untested against Twilio** (no credentials). Tested with a fake client only. |
 
 The end-to-end alert path (card, approve, escalation timeline, reload mid-alert) was exercised by writing a pending incident straight into SQLite, because the detector never produces one from the clip. That proves the CMS and escalation half, not the detection half.
+
+## Phase 2A: Gemini Step 1 screener (built, not yet run against the live API)
+
+Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase2-action-model.md](docs/superpowers/plans/2026-10-11-cctv-alert-phase2-action-model.md) (Part A). The VideoMAE training in Part B is deferred.
+
+| Area | State |
+|---|---|
+| `GeminiScreener`, `GeminiTrigger`, `AnyTrigger`, `make_trigger` (Rule B + Gemini under one cooldown) | Built. Backend tests pass with a fake Gemini client only. |
+| Live Gemini screening, latency, quota | **Not run.** No `GEMINI_API_KEY` was available when this was built. |
+| Benchmark on the labelled dataset (`python -m training.bench_screener --split val|test`) | **Not run.** It needs the downloaded dataset in `backend/data/datasets/`, labelled with `training/ingest.py` (use `--whole-video-label snatch` for pre-trimmed clips) and `training/label_tool.py`, and a Gemini key. Results will be added here. |
+| `case-2.mp4` through the Gemini trigger | **Not checked.** Run `uv run python scripts/debug_trigger.py data/case-2.mp4 --triggers llm --snatch-at 6.4` once, after the benchmark threshold is frozen. Do not tune the prompt or threshold on the demo clips. |
+
+How it works: every `SCREEN_INTERVAL_S` of video time, while a person is in view, the last 3 s of the camera's frame buffer (6 JPEGs, 640 px wide, with YOLO boxes drawn) go to Gemini on a background thread. A score at or above `SCREEN_THRESHOLD` raises a candidate and the usual Step 2 verification follows. Rate-limit or API errors pause screening for 30 s and never stop the video loop.
+
+Things to know:
+- **Quota.** One analysed camera at the default interval is 20 Gemini calls a minute, plus one verification per candidate. Check your key's rate limits before analysing more than one camera or lowering the interval.
+- **No track IDs.** When Gemini sees a snatch that YOLO tracked poorly (the `case-2` situation), the incident has no snapshots and no tracker-based escape direction. The alert still reaches the guard.
+- **Step 1 latency budget** is now up to 4 s (was 2 s) because of the Gemini round trip. The 10 s snatch to alert card target is unchanged and not yet measured.
+- **Replay mode** (`MODE=replay`) never calls Gemini live: regenerate the replay files with `uv run python scripts/precompute.py CAM-02`, which uses `TRIGGERS` and needs the key.
 
 ## Setup
 
@@ -59,6 +78,9 @@ Tests: `cd backend; uv run pytest` and `cd frontend; npx vitest run`. The one GP
 |---|---|
 | `GEMINI_API_KEY` | Enables the Gemini verifier (takes priority over Claude). Untested against the live API; fake client only. |
 | `GEMINI_MODEL` | Default `gemini-2.5-flash`. JSON-schema structured output, thinking budget 0. |
+| `GEMINI_SCREEN_MODEL` | Model for the Step 1 screener. Empty: same as `GEMINI_MODEL` (a `-lite` model is cheaper). |
+| `TRIGGERS` | `rule`, `llm` or `both` (default `both`). Without `GEMINI_API_KEY` it is always Rule B only. |
+| `SCREEN_THRESHOLD`, `SCREEN_INTERVAL_S` | Screener score needed to raise a candidate (default 0.5; set it to the value in `backend/reports/screener_threshold.json` after the benchmark) and seconds between screenings per camera (default 3.0). |
 | `ANTHROPIC_API_KEY` | Enables the Claude verifier when no Gemini key is set. Neither key set: the mock verifier is used. |
 | `CLAUDE_MODEL` | Default `claude-opus-5-5`. Requested with effort `low`, structured output, and server-side refusal fallback. |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `POLICE_NUMBER` | All four set: real call and SMS. Otherwise the dry-run escalator simulates them. |
@@ -135,7 +157,7 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 
 | Check | Result |
 |---|---|
-| Backend tests | 106 passed |
+| Backend tests | 183 passed (Phase 1: 106) |
 | Frontend tests | 43 passed |
 | Snatch to alert card (spec: 10 s or less), 3 runs | Not measurable: no alert is produced from the snatch clip (see above). Pipeline stage timings are recorded per incident (`metrics`: `candidate_s`, `verified_s`, `shown_s`, `call_placed_s`, seconds since detection) and shown on the Incidents page. |
 | Approval to phone ringing (spec: 5 s or less) | Dry-run escalator: ringing is emitted 0.5 s after approval. Real Twilio timing not measured. |
