@@ -29,6 +29,9 @@ export default function IncidentLog() {
         <Link href="/" className="text-slate-200 underline-offset-4 hover:underline">
           Live monitoring
         </Link>
+        <Link href="/results" className="text-slate-200 underline-offset-4 hover:underline">
+          Results
+        </Link>
       </CmsHeader>
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-h-0 flex-col gap-3">

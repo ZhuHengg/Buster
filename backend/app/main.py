@@ -15,6 +15,7 @@ from app.escalation.escalator import Escalator, make_escalator
 from app.incidents.service import IncidentService
 from app.incidents.store import IncidentStore
 from app.models import Incident, IncidentStatus, InvalidTransition
+from app.reports import load_reports
 from app.verify.base import Verifier
 from app.verify.mock_verifier import make_verifier
 from app.ws import WsHub
@@ -133,6 +134,11 @@ def create_app(
     @app.get("/api/cameras")
     async def get_cameras() -> list[dict]:
         return [{**c.model_dump(), "sync": sync_info[c.id]} for c in cameras]
+
+    @app.get("/api/reports")
+    async def get_reports() -> dict:
+        # a fresh clone has no reports: sections are null and generated_hint says how to make them
+        return load_reports(settings.reports_dir, settings.data_dir / "labels.csv")
 
     @app.get("/api/incidents")
     async def list_incidents(status: IncidentStatus | None = None) -> list[Incident]:

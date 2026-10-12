@@ -26,4 +26,4 @@ backend/reports/*.jsonl
 
 # Phase 3 generated reports (final runs are force-added at the demo freeze)
 backend/reports/benchmark.json
-backend/reports/scale.json
+backend/reports/scale*.json

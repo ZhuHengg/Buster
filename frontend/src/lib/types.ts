@@ -120,3 +120,83 @@ export interface IncidentUpdatedMsg {
 }
 
 export type WsMsg = DetectionsMsg | SyncMsg | IncidentUpdatedMsg;
+
+// ---- GET /api/reports -----------------------------------------------------------------------
+export interface ReportMeta {
+  commit: string;
+  generated_at: string;
+  triggers: string;
+  verifier: string; // "mock" marks a benchmark as not valid evidence
+  model: string | null;
+  screen_model?: string | null;
+  threshold: number | null;
+  sources: string[];
+  clips: string[];
+  gpu?: string | null;
+  analyse_fps?: number | null;
+}
+
+export interface BenchmarkAggregate {
+  sources: number;
+  events: number;
+  non_event_hours: number;
+  event_recall_step1: number | null;
+  event_recall_final: number | null;
+  event_recall_final_ci95: [number, number];
+  false_per_hour_step1: number | null;
+  false_per_hour_final: number | null;
+  ai_filter_rate: number | null;
+  verify_errors: number;
+  event_to_candidate_p50_s: number | null;
+  event_to_candidate_p90_s: number | null;
+  step1_wall_p50_s: number | null;
+  step1_wall_p90_s: number | null;
+  candidate_to_verified_p50_s: number | null;
+  candidate_to_verified_p90_s: number | null;
+  push_s: number;
+  detection_to_card_p50_s: number | null;
+  detection_to_card_p90_s: number | null;
+}
+
+export type DemoOutcome = "detected" | "missed" | "rejected_by_ai" | "false_alarm" | "filtered_by_ai" | "clean";
+
+export interface DemoRow {
+  camera_id: string;
+  clip: string;
+  expected_event: { start: number; end: number } | null;
+  outcome: DemoOutcome;
+  result: Record<string, unknown>;
+}
+
+export interface BenchmarkReport {
+  meta: ReportMeta;
+  test: { aggregate: BenchmarkAggregate; per_source: unknown[] } | null;
+  demo: { per_clip: DemoRow[] } | null;
+}
+
+export interface ScaleRow {
+  n: number;
+  fps_mean: number | null;
+  fps_min: number | null;
+  lag_p90_s: number | null;
+  gpu_mem_gb: number | null;
+  ok: boolean;
+  oom?: boolean;
+  error?: string;
+}
+
+export interface ScaleReport {
+  meta: ReportMeta;
+  target_fps: number;
+  rows: ScaleRow[];
+  max_cameras_ok: number;
+  stopped_reason?: string | null;
+}
+
+export interface ReportsResponse {
+  benchmark: BenchmarkReport | null;
+  scale: ScaleReport | null;
+  baseline: { time_to_notice_s: number | null; source: string | null } | null;
+  feedback_rows: number;
+  generated_hint: string;
+}

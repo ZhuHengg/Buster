@@ -10,6 +10,9 @@
   --accent: #ef4444;
   --ok: #22c55e;
   --warn: #f59e0b;
+  /* chart series, validated against the panel surface (dataviz: dark slots 1 and 2) */
+  --series-1: #3987e5;
+  --series-2: #d95926;
 }
 
 @theme inline {

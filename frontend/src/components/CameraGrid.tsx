@@ -43,6 +43,9 @@ export default function CameraGrid({ cameras, state, connected }: CameraGridProp
         <Link href="/incidents" className="text-slate-200 underline-offset-4 hover:underline">
           Incidents
         </Link>
+        <Link href="/results" className="text-slate-200 underline-offset-4 hover:underline">
+          Results
+        </Link>
       </CmsHeader>
       <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-2 p-2">
         {cameras.map((camera) => (

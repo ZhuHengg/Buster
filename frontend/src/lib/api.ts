@@ -1,4 +1,4 @@
-import type { CameraConfig, Incident, IncidentStatus } from "./types";
+import type { CameraConfig, Incident, IncidentStatus, ReportsResponse } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -28,6 +28,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return (await res.json()) as T;
 }
+
+export const getReports = () => request<ReportsResponse>("/api/reports");
 
 export const getCameras = () => request<CameraConfig[]>("/api/cameras");
 
