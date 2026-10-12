@@ -1,6 +1,7 @@
 import time
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from google.genai import errors
 
@@ -71,9 +72,27 @@ def test_screen_uses_screen_model_when_set():
 
 
 def test_screen_timeout_raises_screen_unavailable(settings, camera):
-    screener = GeminiScreener(settings, client=client_for(FakeModels(delay=1.0)), timeout_s=0.05)
+    fake = FakeModels(error=httpx.ReadTimeout("read timed out"))
     with pytest.raises(ScreenUnavailable, match="timed out"):
-        screener.screen(FRAMES, camera)
+        GeminiScreener(settings, client=client_for(fake)).screen(FRAMES, camera)
+
+
+def test_screen_transport_error_raises_screen_unavailable(settings, camera):
+    fake = FakeModels(error=httpx.ConnectError("no route"))
+    with pytest.raises(ScreenUnavailable, match="Gemini call failed"):
+        GeminiScreener(settings, client=client_for(fake)).screen(FRAMES, camera)
+
+
+def test_client_is_built_with_an_http_timeout(settings, monkeypatch):
+    seen = {}
+
+    class Recorder:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setattr("app.trigger.gemini_screener.genai.Client", Recorder)
+    GeminiScreener(settings, timeout_s=8.0)
+    assert seen["http_options"].timeout == 8000
 
 
 def test_screen_api_error_raises_screen_unavailable(settings, camera):

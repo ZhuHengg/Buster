@@ -33,37 +33,60 @@ def source_groups(rows: list[LabelRow], max_hamming: int = NEAR_DUPLICATE_DISTAN
     return sorted(groups.values())
 
 
-def _assign(groups: list[list[str]], fractions: tuple[float, float, float], rng: random.Random) -> dict[str, str]:
-    groups = groups[:]
-    rng.shuffle(groups)
-    n = len(groups)
+def _quotas(n: int, fractions: tuple[float, float, float]) -> dict[str, int]:
     if n >= 3:
-        n_val = max(1, round(n * fractions[1]))
-        n_test = max(1, round(n * fractions[2]))
+        n_val, n_test = max(1, round(n * fractions[1])), max(1, round(n * fractions[2]))
         while n_val + n_test > n - 1:
             n_val, n_test = max(1, n_val - 1), max(1, n_test - 1)
     else:
         n_val, n_test = 0, 1 if n == 2 else 0
+    return {"val": n_val, "test": n_test, "train": n - n_val - n_test}
+
+
+def _assign(
+    groups: list[list[str]], fractions: tuple[float, float, float], rng: random.Random, existing: dict[str, str]
+) -> dict[str, str]:
+    """Groups already placed (any member in `existing`) keep that split; new groups fill the splits'
+    remaining quota, largest deficit first (ties: val, test, train)."""
+    quotas = _quotas(len(groups), fractions)
+    counts = {"val": 0, "test": 0, "train": 0}
     out: dict[str, str] = {}
-    for i, g in enumerate(groups):
-        split = "val" if i < n_val else "test" if i < n_val + n_test else "train"
-        for s in g:
-            out[s] = split
+    pending: list[list[str]] = []
+    for g in groups:
+        placed = {existing[s] for s in g if s in existing}
+        if len(placed) > 1:
+            raise ValueError(f"near-duplicate sources {g} are already in different splits {sorted(placed)}")
+        if placed:
+            split = placed.pop()
+            counts[split] += 1
+            out.update({s: split for s in g})
+        else:
+            pending.append(g)
+    rng.shuffle(pending)
+    for g in pending:
+        split = max(("val", "test", "train"), key=lambda k: quotas[k] - counts[k])
+        counts[split] += 1
+        out.update({s: split for s in g})
     return out
 
 
 def split_sources(
-    rows: list[LabelRow], seed: int = 42, fractions: tuple[float, float, float] = (0.7, 0.15, 0.15)
+    rows: list[LabelRow],
+    seed: int = 42,
+    fractions: tuple[float, float, float] = (0.7, 0.15, 0.15),
+    existing: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """source_id -> "train" | "val" | "test". Near-duplicates share a split. Groups containing a
-    snatch segment are spread first so every split gets snatch sources when there are at least 3."""
+    snatch segment are spread first so every split gets snatch sources when there are at least 3.
+    Pass the previous mapping as `existing` so adding labels never moves a source between splits."""
+    existing = existing or {}
     snatch_ids = {r.source_id for r in rows if r.label == "snatch"}
     groups = source_groups(rows)
     snatch_groups = [g for g in groups if snatch_ids.intersection(g)]
     other_groups = [g for g in groups if not snatch_ids.intersection(g)]
     rng = random.Random(seed)
-    out = _assign(snatch_groups, fractions, rng)
-    out.update(_assign(other_groups, fractions, rng))
+    out = _assign(snatch_groups, fractions, rng, existing)
+    out.update(_assign(other_groups, fractions, rng, existing))
     return out
 
 

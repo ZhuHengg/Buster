@@ -1,6 +1,6 @@
 import pytest
 
-from training.events import choose_threshold, event_hits, wilson_interval
+from training.events import NO_SCORE, choose_threshold, event_hits, wilson_interval
 
 
 def series(pairs):
@@ -51,3 +51,19 @@ def test_wilson_interval_known_values():
     lo, hi = wilson_interval(9, 10)
     assert lo == pytest.approx(0.596, abs=0.01) and hi == pytest.approx(0.982, abs=0.01)
     assert wilson_interval(0, 0) == (0.0, 1.0)
+
+
+def test_choose_threshold_requires_normal_footage():
+    with pytest.raises(ValueError, match="normal footage"):
+        choose_threshold([(series([(5, 0.9)]), [(4.5, 5.5)], 0.0)], consecutive=1)
+
+
+def test_choose_threshold_requires_events():
+    with pytest.raises(ValueError, match="snatch events"):
+        choose_threshold([(series([(5, 0.9)]), [], 1.0)], consecutive=1)
+
+
+def test_no_score_steps_never_trigger_and_are_not_threshold_candidates():
+    scores = series([(5, NO_SCORE), (6, 0.8)])
+    t = choose_threshold([(scores, [(5.5, 6.0)], 1.0)], consecutive=1)
+    assert t > NO_SCORE and event_hits(series([(5, NO_SCORE)]), [(5.0, 5.5)], t, consecutive=1) == (0, 0)

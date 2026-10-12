@@ -1,6 +1,7 @@
 """Event-level metrics shared by the Gemini screener benchmark and (later) the action model."""
 import math
 
+NO_SCORE = -math.inf  # a step that is not suspicious: it can never reach a threshold
 Scores = list[tuple[float, float]]  # (time_s, score)
 Events = list[tuple[float, float]]  # (start_s, end_s)
 VideoScores = tuple[Scores, Events, float]  # scores, snatch events, hours of non-event footage
@@ -43,10 +44,14 @@ def event_hits(
 def choose_threshold(videos: list[VideoScores], max_false_per_hour: float = 2.0, **hit_kwargs) -> float:
     """Highest event recall among thresholds with false triggers per hour <= the limit; ties go to
     the lowest threshold. A threshold above every score always qualifies (no triggers)."""
-    all_scores = sorted({s for scores, _, _ in videos for _, s in scores})
-    candidates = all_scores + [max(all_scores, default=0.0) + 1e-6]
     total_events = sum(len(ev) for _, ev, _ in videos)
     hours = sum(h for _, _, h in videos)
+    if hours <= 0:
+        raise ValueError("no normal footage to calibrate false triggers per hour")
+    if total_events == 0:
+        raise ValueError("no snatch events in this split to calibrate recall")
+    all_scores = sorted({s for scores, _, _ in videos for _, s in scores if s > NO_SCORE})
+    candidates = all_scores + [max(all_scores, default=0.0) + 1e-6]
     best: tuple[float, float] | None = None  # (recall, -threshold)
     best_t = candidates[-1]
     for t in candidates:
@@ -54,9 +59,9 @@ def choose_threshold(videos: list[VideoScores], max_false_per_hour: float = 2.0,
         for scores, ev, _ in videos:
             h, f = event_hits(scores, ev, t, **hit_kwargs)
             hits, false = hits + h, false + f
-        if hours > 0 and false / hours > max_false_per_hour:
+        if false / hours > max_false_per_hour:
             continue
-        key = (hits / total_events if total_events else 0.0, -t)
+        key = (hits / total_events, -t)
         if best is None or key > best:
             best, best_t = key, t
     return best_t

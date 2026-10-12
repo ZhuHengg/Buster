@@ -35,6 +35,7 @@ How it works: every `SCREEN_INTERVAL_S` of video time, while a person is in view
 
 Things to know:
 - **Quota.** One analysed camera at the default interval is 20 Gemini calls a minute, plus one verification per candidate. Check your key's rate limits before analysing more than one camera or lowering the interval.
+- **Benchmark protocol.** `--split val` picks the threshold and saves it with the model and prompt hash; `--split test` refuses to run if either changed, or if any screening call failed (failed calls are reported, never scored as negatives, and are retried on rerun because successful calls are cached). Each source's split is saved in `backend/reports/splits.json` so adding labels never moves a video between val and test. Commit that file.
 - **No track IDs.** When Gemini sees a snatch that YOLO tracked poorly (the `case-2` situation), the incident has no snapshots and no tracker-based escape direction. The alert still reaches the guard.
 - **Step 1 latency budget** is now up to 4 s (was 2 s) because of the Gemini round trip. The 10 s snatch to alert card target is unchanged and not yet measured.
 - **Replay mode** (`MODE=replay`) never calls Gemini live: regenerate the replay files with `uv run python scripts/precompute.py CAM-02`, which uses `TRIGGERS` and needs the key.

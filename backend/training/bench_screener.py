@@ -19,7 +19,7 @@ import numpy as np
 
 from app.config import DATA_DIR, BACKEND_DIR, CameraConfig, Settings, load_cameras
 from app.trigger.gemini_screener import GeminiScreener, ScreenResult, ScreenUnavailable, build_screen_prompt
-from training.events import VideoScores, choose_threshold, event_hits, wilson_interval
+from training.events import NO_SCORE, VideoScores, choose_threshold, event_hits, wilson_interval
 from training.labels import DATASETS_DIR, LABELS_PATH, LabelRow, read_labels, video_duration
 from training.splits import assert_no_demo_clips, split_sources
 
@@ -29,6 +29,14 @@ MAX_WIDTH = 640
 HIT_KWARGS = dict(consecutive=1, tolerance_s=3.0)  # a score at time t describes the window ending at t
 BENCH_CAMERA = CameraConfig(id="BENCH", name="Street CCTV camera", location="public street")
 REPORTS_DIR = BACKEND_DIR / "reports"
+
+
+class BenchmarkIncomplete(Exception):
+    """Some screening calls failed, so the numbers (and any threshold) would be misleading."""
+
+
+def step_score(result: ScreenResult) -> float:
+    return result.score if result.suspicious else NO_SCORE
 
 
 class TooManyCalls(Exception):
@@ -84,6 +92,7 @@ def run(
     cache_path: Path = REPORTS_DIR / "screener_cache.jsonl",
     out_path: Path | None = None,
     threshold_path: Path = REPORTS_DIR / "screener_threshold.json",
+    splits_path: Path = REPORTS_DIR / "splits.json",
     stride_s: float = 3.0,
     max_calls: int = 1500,
 ) -> dict:
@@ -91,16 +100,21 @@ def run(
         raise ValueError("split must be val, test or all")
     threshold_path, cache_path = Path(threshold_path), Path(cache_path)
     out_path = Path(out_path) if out_path else REPORTS_DIR / f"screener_{split}.json"
-    saved_threshold: float | None = None
+    saved: dict | None = None
     if split == "test":
         if not threshold_path.exists():
             raise FileNotFoundError(f"{threshold_path} missing: run --split val first")
-        saved_threshold = json.loads(threshold_path.read_text(encoding="utf-8"))["threshold"]
+        saved = json.loads(threshold_path.read_text(encoding="utf-8"))
 
     rows = read_labels(labels)
     cameras = cameras if cameras is not None else load_cameras(Path(data_dir) / "cameras.json")
     assert_no_demo_clips(rows, cameras, data_dir)
-    mapping = split_sources(rows)
+    splits_path = Path(splits_path)
+    existing = json.loads(splits_path.read_text(encoding="utf-8")) if splits_path.exists() else {}
+    mapping = split_sources(rows, existing=existing)
+    if split != "all":  # keep every source in the split it was first given
+        splits_path.parent.mkdir(parents=True, exist_ok=True)
+        splits_path.write_text(json.dumps({**existing, **mapping}, indent=2, sort_keys=True), encoding="utf-8")
     chosen = [r for r in rows if split == "all" or mapping[r.source_id] == split]
     by_file: dict[str, list[LabelRow]] = {}
     for r in chosen:
@@ -109,6 +123,12 @@ def run(
     model = getattr(screener, "model", "unknown")
     prompt_hash = hashlib.sha1(build_screen_prompt(BENCH_CAMERA).encode()).hexdigest()[:8]
     cache = _load_cache(cache_path)
+    if saved is not None and (saved.get("model") != model or saved.get("prompt_hash") != prompt_hash):
+        raise ValueError(
+            f"{threshold_path.name} was chosen with model {saved.get('model')} / prompt {saved.get('prompt_hash')}, "
+            f"now {model} / {prompt_hash}: rerun --split val"
+        )
+    saved_threshold = saved["threshold"] if saved else None
 
     def key(file: str, t: float) -> str:
         return hashlib.sha1(f"{file}|{t:.3f}|{model}|{prompt_hash}".encode()).hexdigest()
@@ -147,18 +167,24 @@ def run(
                     try:
                         result = screener.screen(frames, BENCH_CAMERA)
                     except ScreenUnavailable as exc:
-                        errors += 1
+                        errors += 1  # not scored: a failed call is missing data, not a negative
                         print(f"  screen failed at {file}@{t}: {exc}", file=sys.stderr)
-                        scores.append((t, 0.0))
                         continue
                     calls += 1
                     cache_file.write(json.dumps({"key": k, "result": result.model_dump()}) + "\n")
                     cache_file.flush()
-                scores.append((t, result.score if result.suspicious else 0.0))
+                scores.append((t, step_score(result)))
             cap.release()
             non_event_hours = max(0.0, duration - sum(b - a for a, b in events)) / 3600
             videos.append((scores, events, non_event_hours))
             detail[file] = (scores, events)
+
+    failed = f"{errors} screening calls failed; rerun to retry them (successful calls are cached)"
+    if errors and split == "val":
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps({"split": split, "model": model, "errors": errors, "calls": calls,
+                                        "cache_hits": cache_hits}, indent=2), encoding="utf-8")
+        raise BenchmarkIncomplete(f"{failed}; no threshold saved")
 
     threshold = saved_threshold
     if split == "val":
@@ -193,6 +219,8 @@ def run(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "missed"}, indent=2))
+    if errors and split == "test":
+        raise BenchmarkIncomplete(f"{failed}; the report was written but its numbers are incomplete")
     return report
 
 
@@ -216,6 +244,9 @@ def main() -> int:
     except TooManyCalls as exc:
         print(exc)
         return 2
+    except (BenchmarkIncomplete, ValueError) as exc:
+        print(exc)
+        return 3
     return 0
 
 

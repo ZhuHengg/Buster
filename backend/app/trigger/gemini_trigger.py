@@ -43,7 +43,7 @@ class GeminiTrigger:
 
     def reset(self) -> None:
         self._gen += 1  # in-flight results from before the reset are discarded
-        self._inflight: tuple[Future, float, int] | None = None
+        self._inflight: tuple[Future, float, int, frozenset[int]] | None = None
         self._last_request_pts = -math.inf
         self._cooldown_until = -math.inf
         self._paused_until = -math.inf
@@ -58,9 +58,9 @@ class GeminiTrigger:
 
         candidate = None
         if self._inflight is not None and self._inflight[0].done():
-            future, request_pts, gen = self._inflight
+            future, request_pts, gen, known = self._inflight
             self._inflight = None
-            candidate = self._handle(future, request_pts, gen, fd)
+            candidate = self._handle(future, request_pts, gen, known, fd)
         if candidate is None and self._inflight is None and self._can_request(fd):
             candidate = self._request(fd)
         return candidate
@@ -86,18 +86,24 @@ class GeminiTrigger:
         if not frames:
             return None
         self._last_request_pts = fd.pts
+        # IDs Gemini can legitimately have read: those visible in the window it was sent
+        known = frozenset(i for pts, ids in self._recent if fd.pts - pts <= WINDOW_S + 1.0 for i in ids)
         if self.blocking:
             future: Future = Future()
             try:
                 future.set_result(self.screener.screen(frames, self.camera))
             except Exception as exc:  # noqa: BLE001 - any failure must back off, not crash the loop
                 future.set_exception(exc)
-            return self._handle(future, fd.pts, self._gen, fd)
+            return self._handle(future, fd.pts, self._gen, known, fd)
         assert self._executor is not None
-        self._inflight = (self._executor.submit(self.screener.screen, frames, self.camera), fd.pts, self._gen)
+        self._inflight = (
+            self._executor.submit(self.screener.screen, frames, self.camera), fd.pts, self._gen, known
+        )
         return None
 
-    def _handle(self, future: Future, request_pts: float, gen: int, fd: FrameDetections) -> CandidateEvent | None:
+    def _handle(
+        self, future: Future, request_pts: float, gen: int, known: frozenset[int], fd: FrameDetections
+    ) -> CandidateEvent | None:
         try:
             result: ScreenResult = future.result()
         except Exception as exc:  # noqa: BLE001
@@ -110,7 +116,6 @@ class GeminiTrigger:
         if not result.suspicious or result.score < s.screen_threshold:
             return None
         self._cooldown_until = fd.pts + self.cooldown_s
-        known = {i for _, ids in self._recent for i in ids}
         return CandidateEvent(
             camera_id=fd.camera_id,
             pts=request_pts,

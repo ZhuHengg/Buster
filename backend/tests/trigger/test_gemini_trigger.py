@@ -211,3 +211,17 @@ async def test_pipeline_opens_incident_for_llm_candidate_without_ids(tmp_path):
     assert inc.status is IncidentStatus.PENDING_REVIEW
     assert inc.candidate.trigger == "llm" and inc.snapshot_files == []
     assert (inc.escape_direction, inc.escape_exit) == (None, None)
+
+
+def test_live_ids_are_checked_against_the_screened_window_not_the_handling_frame():
+    result = ScreenResult(suspicious=True, score=0.9, reason="grab", suspect_track_ids=[2, 9],
+                          motorcycle_track_id=5, victim_track_id=1)
+    trig, buf = make(FakeScreener(result=result, delay=0.5), blocking=False, screen_max_lag_s=6.0)
+    first = scene(t_end=0.1, ids=(1, 2, 5, 7))  # the frame that is screened (pts 0.0)
+    later = scene(t_start=1.0, t_end=5.0, ids=(7, 9))  # 9 only appears after the request
+    assert feed(trig, buf, first + later) == []  # the call is still in flight
+    time.sleep(0.7)
+    cands = feed(trig, buf, scene(t_start=5.5, t_end=5.6, ids=(7, 9)))
+    assert len(cands) == 1
+    c = cands[0]
+    assert c.suspect_track_ids == [2] and c.motorcycle_track_id == 5 and c.victim_track_id == 1

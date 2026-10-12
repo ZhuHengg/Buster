@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from app.trigger.gemini_screener import ScreenResult
-from training.bench_screener import TooManyCalls, run
+from app.trigger.gemini_screener import ScreenResult, ScreenUnavailable
+from training.bench_screener import BenchmarkIncomplete, TooManyCalls, run, step_score
 from training.labels import LabelRow, write_labels
 from training.phash import video_phash
 
@@ -40,7 +40,8 @@ def dataset(tmp_path: Path, make_video):
 def kwargs(d, **kw):
     base = dict(labels=d["labels"], datasets_dir=d["root"], cameras=[], data_dir=d["tmp"] / "data",
                 cache_path=d["tmp"] / "cache.jsonl", out_path=d["tmp"] / "report.json",
-                threshold_path=d["tmp"] / "threshold.json", stride_s=3.0, max_calls=1000)
+                threshold_path=d["tmp"] / "threshold.json", splits_path=d["tmp"] / "splits.json",
+                stride_s=3.0, max_calls=1000)
     base.update(kw)
     return base
 
@@ -94,3 +95,45 @@ def test_bench_rejects_demo_clip_in_labels(dataset, make_video):
     write_labels(dataset["labels"], rows)
     with pytest.raises(ValueError, match="case-2"):
         run(split="all", screener=FakeScreener(), **kwargs(dataset, cameras=cams))
+
+
+class FlakyScreener(FakeScreener):
+    def screen(self, frames, camera):
+        n = self.calls
+        self.calls += 1
+        if n % 2:
+            raise ScreenUnavailable("429")
+        return ScreenResult(suspicious=True, score=0.9, reason="x", suspect_track_ids=[])
+
+
+def test_step_score_non_suspicious_is_no_score():
+    import math
+    off = ScreenResult(suspicious=False, score=0.99, reason="x", suspect_track_ids=[])
+    on = ScreenResult(suspicious=True, score=0.7, reason="x", suspect_track_ids=[])
+    assert step_score(off) == -math.inf and step_score(on) == 0.7
+
+
+def test_bench_errors_are_not_scored_and_val_refuses_to_save_a_threshold(dataset):
+    with pytest.raises(BenchmarkIncomplete, match="failed"):
+        run(split="val", screener=FlakyScreener(), **kwargs(dataset))
+    assert not (dataset["tmp"] / "threshold.json").exists()
+    assert json.loads((dataset["tmp"] / "report.json").read_text())["errors"] > 0  # report is still written
+
+
+def test_bench_all_with_errors_reports_them(dataset):
+    report = run(split="all", screener=FlakyScreener(), **kwargs(dataset))
+    assert report["errors"] > 0
+
+
+def test_bench_test_split_rejects_threshold_from_another_model_or_prompt(dataset):
+    run(split="val", screener=FakeScreener(), **kwargs(dataset))
+    other = FakeScreener()
+    other.model = "another-model"
+    with pytest.raises(ValueError, match="rerun --split val"):
+        run(split="test", screener=other, **kwargs(dataset))
+
+
+def test_bench_persists_splits_and_reuses_them(dataset):
+    run(split="val", screener=FakeScreener(), **kwargs(dataset))
+    saved = json.loads((dataset["tmp"] / "splits.json").read_text())
+    assert set(saved.values()) <= {"train", "val", "test"} and len(saved) == 6

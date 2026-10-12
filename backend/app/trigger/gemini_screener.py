@@ -1,8 +1,7 @@
 import json
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
+import httpx
 from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel, Field, ValidationError
@@ -50,9 +49,11 @@ class GeminiScreener:
     ):
         self.model = settings.gemini_screen_model or settings.gemini_model
         self.timeout_s = timeout_s
-        self.client = client or genai.Client(api_key=settings.gemini_api_key)
+        # the SDK's HTTP timeout is what actually ends a hung request (no stranded worker threads)
+        self.client = client or genai.Client(
+            api_key=settings.gemini_api_key, http_options=types.HttpOptions(timeout=int(timeout_s * 1000))
+        )
         self._schema = _strict_schema(ScreenResult)
-        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gemini-screen")
 
     def screen(self, frames: list[bytes], camera: CameraConfig) -> ScreenResult:
         contents: list[Any] = [types.Part.from_bytes(data=f, mime_type="image/jpeg") for f in frames]
@@ -63,15 +64,14 @@ class GeminiScreener:
             max_output_tokens=500,
             thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
-        future = self._pool.submit(
-            self.client.models.generate_content, model=self.model, contents=contents, config=config
-        )
         try:
-            response = future.result(timeout=self.timeout_s)
-        except FutureTimeout as exc:
+            response = self.client.models.generate_content(model=self.model, contents=contents, config=config)
+        except httpx.TimeoutException as exc:
             raise ScreenUnavailable(f"screening timed out after {self.timeout_s:g}s") from exc
         except errors.APIError as exc:
             raise ScreenUnavailable(f"Gemini API error: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 - transport failures must back off, not crash the caller
+            raise ScreenUnavailable(f"Gemini call failed: {exc}") from exc
 
         feedback = getattr(response, "prompt_feedback", None)
         if feedback is not None and getattr(feedback, "block_reason", None):

@@ -53,3 +53,22 @@ def test_assert_no_demo_clips_by_name_and_phash(tmp_path: Path, make_video):
     renamed = row("y", file="renamed.mp4", phash=video_phash(demo))
     with pytest.raises(ValueError, match="case-2"):
         assert_no_demo_clips([renamed], cameras, data_dir)
+
+
+def _many(n: int, prefix: str, label: str, offset: int = 0):
+    return [row(f"{prefix}{i}", label, phash=f"{(i + offset) % 16:x}" * 24 + f"{i:024x}") for i in range(n)]
+
+
+def test_split_sources_is_stable_when_labels_are_added():
+    rows = _many(20, "s", "snatch") + _many(20, "n", "normal", 3)
+    first = split_sources(rows, seed=5)
+    more = rows + _many(5, "new_s", "snatch", 7) + _many(5, "new_n", "normal", 9)
+    second = split_sources(more, seed=5, existing=first)
+    assert all(second[k] == v for k, v in first.items())
+    assert set(second) == {r.source_id for r in more}
+
+
+def test_split_sources_refuses_near_duplicates_already_in_different_splits():
+    rows = [row("a", "snatch", phash="0" * 48), row("b", "snatch", phash="0" * 48)]
+    with pytest.raises(ValueError, match="different splits"):
+        split_sources(rows, existing={"a": "val", "b": "test"})
