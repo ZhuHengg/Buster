@@ -27,9 +27,9 @@ Plan: [docs/superpowers/plans/2026-10-11-cctv-alert-phase2-action-model.md](docs
 | Area | State |
 |---|---|
 | `GeminiScreener`, `GeminiTrigger`, `AnyTrigger`, `make_trigger` (Rule B + Gemini under one cooldown) | Built. Backend tests pass with a fake Gemini client only. |
-| Live Gemini screening, latency, quota | **Not run.** No `GEMINI_API_KEY` was available when this was built. |
+| Live Gemini screening, latency, quota | **Run on the two demo clips only** (row below). Two bugs found and fixed on the way: the 8 s SDK deadline is below the API's 10 s minimum (every call failed with 400), and the trigger screened a one-frame buffer at the first frame. No quota or latency numbers yet. |
 | Benchmark on the labelled dataset (`python -m training.bench_screener --split val|test`) | **Not run.** It needs the downloaded dataset in `backend/data/datasets/`, labelled with `training/ingest.py` (use `--whole-video-label snatch` for pre-trimmed clips) and `training/label_tool.py`, and a Gemini key. Results will be added here. |
-| `case-2.mp4` through the Gemini trigger | **Not checked.** Run `uv run python scripts/debug_trigger.py data/case-2.mp4 --triggers llm --snatch-at 6.4` once, after the benchmark threshold is frozen. Do not tune the prompt or threshold on the demo clips. |
+| `case-2.mp4` / `case-1.mp4` through the Gemini trigger (2026-10-12, default threshold 0.5, **not tuned**) | **Poor.** `case-2` (snatch at about 6.4 s): the only candidate was at 17.9 s, outside the snatch window, so the snatch is **missed**. `case-1` (normal): **3 false candidates** in 59 s (times differ between runs). Gemini answers vary run to run. Do not tune the prompt or threshold on these clips: pick the threshold on the labelled val split with `training.bench_screener`. |
 
 How it works: every `SCREEN_INTERVAL_S` of video time, while a person is in view, the last 3 s of the camera's frame buffer (6 JPEGs, 640 px wide, with YOLO boxes drawn) go to Gemini on a background thread. A score at or above `SCREEN_THRESHOLD` raises a candidate and the usual Step 2 verification follows. Rate-limit or API errors pause screening for 30 s and never stop the video loop.
 
