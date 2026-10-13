@@ -9,6 +9,7 @@ from typing import Any
 
 from app.config import CameraConfig, Settings
 from app.incidents.service import IncidentService
+from app.playback import PlaybackControl
 from app.models import (
     CandidateEvent,
     FrameDetections,
@@ -81,11 +82,13 @@ class CameraPipeline:
         hub: Any,
         buffer: FrameBuffer,
         source: Any = None,
+        control: PlaybackControl | None = None,
     ):
         self.camera, self.settings = camera, settings
         self.detector, self.trigger, self.verifier = detector, trigger, verifier
         self.service, self.hub, self.buffer = service, hub, buffer
         self.source = source
+        self.control = control or PlaybackControl()
         self._recent: deque[FrameDetections] = deque(maxlen=200)
         self._suspect_until: dict[int, float] = {}  # track id -> clip time until which it is flagged red
         self._tasks = _TaskSet()
@@ -109,7 +112,12 @@ class CameraPipeline:
         source = self.source
         if source is None:
             source = ClipSource(self.settings.data_dir / (self.camera.clip or ""), realtime=True)
+        control = self.control
+        control.register(self.camera.id)
+        generation = control.generation
         it = iter(source)
+        offset = 0  # added to the clip's own loop counter so a restart looks like a new loop to the browser
+        fresh = False  # the next frame starts a restarted pass: reset, do not treat it as a wrap
         last_loop: int | None = None
         last_sync_sec: int | None = None
         try:
@@ -117,10 +125,24 @@ class CameraPipeline:
                 item = await asyncio.to_thread(next, it, None)
                 if item is None:
                     break
-                frame, pts, loop = item
+                if control.generation != generation:  # restart requested: play the clip again from the start
+                    generation = control.generation
+                    self._close(it)
+                    it, offset, fresh = iter(source), (last_loop + 1 if last_loop is not None else 0), True
+                    continue
+                frame, pts, raw_loop = item
+                loop = raw_loop + offset
                 if last_loop is not None and loop != last_loop:
+                    if not fresh and not control.loop:
+                        # one pass only: hold on the last frame until restart or loop is turned back on
+                        self._close(it)
+                        await control.hold(self.camera.id, generation)
+                        generation = control.generation
+                        it, offset, fresh = iter(source), last_loop + 1, True
+                        continue
                     self._reset()
                     last_sync_sec = None
+                fresh = False
                 last_loop = loop
 
                 if not self._due(pts) and self._last_fd is not None:
@@ -143,7 +165,14 @@ class CameraPipeline:
                     except Exception:
                         log.exception("failed to open incident for %s", self.camera.id)
         finally:
+            await control.unregister(self.camera.id)
             await self._tasks.wait_idle()
+
+    @staticmethod
+    def _close(it: Any) -> None:
+        close = getattr(it, "close", None)
+        if close is not None:
+            close()
 
     def _reset(self) -> None:
         self.detector.reset()
@@ -199,11 +228,13 @@ class ReplayPipeline:
         max_loops: int | None = None,
         verify_delay: float = 2.0,
         suspect_flag_s: float = 6.0,
+        control: PlaybackControl | None = None,
     ):
         self.camera, self.path = camera, Path(precomputed_path)
         self.service, self.hub = service, hub
         self.realtime, self.max_loops, self.verify_delay = realtime, max_loops, verify_delay
         self.suspect_flag_s = suspect_flag_s
+        self.control = control or PlaybackControl()
         self._tasks = _TaskSet()
 
     async def run(self) -> None:
@@ -215,13 +246,20 @@ class ReplayPipeline:
         fps = data.get("fps") or 25.0
         loop_len = frames[-1].pts + 1.0 / fps
         loop = 0
+        control = self.control
+        control.register(self.camera.id)
+        generation = control.generation
         try:
             while self.max_loops is None or loop < self.max_loops:
+                restarted = False
                 suspect_until: dict[int, float] = {}
                 pending = list(candidates)
                 last_sec: int | None = None
                 started = time.perf_counter()
                 for fd in frames:
+                    if control.generation != generation:  # restart requested: start a new pass now
+                        generation, restarted = control.generation, True
+                        break
                     fd = fd.model_copy(update={"loop": loop})
                     if self.realtime:
                         delay = started + fd.pts - time.perf_counter()
@@ -236,12 +274,17 @@ class ReplayPipeline:
                         entry = pending.pop(0)
                         for track_id in await self._inject(entry, loop):
                             suspect_until[track_id] = fd.pts + self.suspect_flag_s
-                if self.realtime:
-                    delay = started + loop_len - time.perf_counter()
-                    if delay > 0:
-                        await asyncio.sleep(delay)
+                if not restarted:
+                    if self.realtime:
+                        delay = started + loop_len - time.perf_counter()
+                        if delay > 0:
+                            await asyncio.sleep(delay)
+                    if not control.loop and (self.max_loops is None or loop + 1 < self.max_loops):
+                        await control.hold(self.camera.id, generation)  # one pass only: hold until restart
+                        generation = control.generation
                 loop += 1
         finally:
+            await control.unregister(self.camera.id)
             await self._tasks.wait_idle()
 
     async def _inject(self, entry: dict, loop: int) -> set[int]:

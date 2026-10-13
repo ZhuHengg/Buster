@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { clipUrl } from "@/lib/api";
 import { expectedPts, fitTransform, nearestDetections } from "@/lib/overlay";
-import type { CameraConfig, DetectionsMsg, SyncMsg } from "@/lib/types";
+import type { CameraConfig, DetectionsMsg, PlaybackState, SyncMsg } from "@/lib/types";
 
 const RESYNC_THRESHOLD_S = 0.3;
 
@@ -13,6 +13,7 @@ export interface CameraTileProps {
   detections: DetectionsMsg[];
   sync: SyncMsg | undefined;
   alerting: boolean;
+  playback?: PlaybackState;
 }
 
 function useClock(): string {
@@ -26,14 +27,22 @@ function useClock(): string {
   return text;
 }
 
-export default function CameraTile({ camera, detections, sync, alerting }: CameraTileProps) {
+export default function CameraTile({
+  camera,
+  detections,
+  sync,
+  alerting,
+  playback = { loop: true, held: false },
+}: CameraTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detRef = useRef(detections);
   const syncRef = useRef(sync);
+  const loopRef = useRef(playback.loop);
   useEffect(() => {
     detRef.current = detections;
     syncRef.current = sync;
+    loopRef.current = playback.loop;
   });
   const clock = useClock();
   const duration = camera.sync?.duration;
@@ -50,9 +59,15 @@ export default function CameraTile({ camera, detections, sync, alerting }: Camer
       // keep the video on the pipeline's clock; the wrap-around distance counts as small drift
       const s = syncRef.current;
       if (s && duration && !video.seeking && video.readyState >= 2) {
-        const target = expectedPts(s, Date.now() / 1000, duration);
+        const looping = loopRef.current;
+        const target = expectedPts(s, Date.now() / 1000, duration, looping);
         const drift = Math.abs(video.currentTime - target);
-        if (Math.min(drift, duration - drift) > RESYNC_THRESHOLD_S) video.currentTime = target;
+        // looping: the wrap-around distance counts as small drift; playing once there is no wrap
+        if ((looping ? Math.min(drift, duration - drift) : drift) > RESYNC_THRESHOLD_S) {
+          video.currentTime = target;
+          // a restart arrives as a new pass while the video sits ended or paused on its last frame
+          if (video.paused && target < duration - RESYNC_THRESHOLD_S) void video.play().catch(() => undefined);
+        }
       }
 
       const dpr = window.devicePixelRatio || 1;
@@ -129,7 +144,7 @@ export default function CameraTile({ camera, detections, sync, alerting }: Camer
             src={clipUrl(camera.clip!)}
             className="absolute inset-0 h-full w-full object-contain"
             muted
-            loop
+            loop={playback.loop}
             playsInline
             autoPlay
             preload="auto"

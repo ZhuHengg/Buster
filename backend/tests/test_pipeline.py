@@ -109,11 +109,12 @@ def service(tmp_path: Path, hub: FakeHub) -> IncidentService:
     return IncidentService(IncidentStore(tmp_path / "i.db"), tmp_path / "snaps", on_change)
 
 
-def make_pipeline(camera, tmp_path, service, hub, source, trigger=None, verifier=None, detector=None, **settings):
+def make_pipeline(camera, tmp_path, service, hub, source, trigger=None, verifier=None, detector=None, control=None,
+                  **settings):
     return CameraPipeline(
         camera, Settings(_env_file=None, data_dir=tmp_path, **settings), detector or FakeDetector(),
         trigger or FakeTrigger(), verifier or MockVerifier(tmp_path / "none"), service, hub, FrameBuffer(),
-        source=source,
+        source=source, control=control,
     )
 
 

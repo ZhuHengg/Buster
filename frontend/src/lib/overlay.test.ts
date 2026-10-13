@@ -65,4 +65,11 @@ describe("expectedPts", () => {
   it("never returns a negative value when the clocks disagree slightly", () => {
     expect(expectedPts({ ...sync, pts: 0 }, 99.9, 10)).toBeCloseTo(9.9);
   });
+
+  it("without looping it stops at the end instead of wrapping back to the start", () => {
+    // wrapping here would drag a clip that should hold on its last frame back to the beginning
+    expect(expectedPts(sync, 130, 20, false)).toBe(20);
+    expect(expectedPts(sync, 100.5, 20, false)).toBeCloseTo(9.5);
+    expect(expectedPts({ ...sync, pts: 0 }, 99.9, 10, false)).toBe(0);
+  });
 });

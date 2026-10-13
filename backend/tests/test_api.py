@@ -167,3 +167,14 @@ def test_ws_receives_incident_updates_from_service(client):
         msg = ws.receive_json()
     assert msg["type"] == "incident.updated"
     assert msg["incident"]["id"] == inc.id and msg["incident"]["status"] == "REJECTED"
+
+
+def test_playback_api_gets_sets_and_restarts_and_broadcasts(client):
+    assert client.get("/api/playback").json() == {"loop": True, "held": False}
+    with client.websocket_connect("/ws") as ws:
+        assert client.post("/api/playback", json={"loop": False}).json() == {"loop": False, "held": False}
+        assert ws.receive_json() == {"type": "playback", "loop": False, "held": False}
+        gen = client.app.state.playback.generation
+        assert client.post("/api/playback/restart").status_code == 200
+        assert client.app.state.playback.generation == gen + 1
+    assert client.get("/api/playback").json()["loop"] is False

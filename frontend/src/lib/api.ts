@@ -1,4 +1,4 @@
-import type { CameraConfig, Incident, IncidentStatus, ReportsResponse } from "./types";
+import type { CameraConfig, Incident, IncidentStatus, PlaybackState, ReportsResponse } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -28,6 +28,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return (await res.json()) as T;
 }
+
+export const getPlayback = () => request<PlaybackState>("/api/playback");
+
+export const setLoop = (loop: boolean) =>
+  request<PlaybackState>("/api/playback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ loop }),
+  });
+
+export const restartPlayback = () => request<PlaybackState>("/api/playback/restart", { method: "POST" });
 
 export const getReports = () => request<ReportsResponse>("/api/reports");
 

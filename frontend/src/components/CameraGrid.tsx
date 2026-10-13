@@ -7,6 +7,7 @@ import type { CmsState } from "@/lib/ws";
 import type { CameraConfig } from "@/lib/types";
 
 import CameraTile from "./CameraTile";
+import PlaybackControls from "./PlaybackControls";
 
 export function CmsHeader({ connected, children }: { connected: boolean; children?: React.ReactNode }) {
   return (
@@ -41,6 +42,7 @@ export default function CameraGrid({ cameras, state, connected, pendingCount = 0
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CmsHeader connected={connected}>
+        <PlaybackControls playback={state.playback} />
         {pendingCount > 0 && (
           <span className="rounded border border-accent/60 bg-accent/10 px-2 py-0.5 font-medium text-red-300">
             {pendingCount} pending {pendingCount === 1 ? "alert" : "alerts"}
@@ -61,6 +63,7 @@ export default function CameraGrid({ cameras, state, connected, pendingCount = 0
             detections={state.detections[camera.id] ?? []}
             sync={state.sync[camera.id]}
             alerting={camera.id === alertCamera}
+            playback={state.playback}
           />
         ))}
       </main>

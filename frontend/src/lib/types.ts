@@ -119,7 +119,16 @@ export interface IncidentUpdatedMsg {
   incident: Incident;
 }
 
-export type WsMsg = DetectionsMsg | SyncMsg | IncidentUpdatedMsg;
+export interface PlaybackState {
+  loop: boolean; // false: every camera plays its clip once and holds
+  held: boolean; // every camera has finished its pass and is holding
+}
+
+export interface PlaybackMsg extends PlaybackState {
+  type: "playback";
+}
+
+export type WsMsg = DetectionsMsg | SyncMsg | IncidentUpdatedMsg | PlaybackMsg;
 
 // ---- GET /api/reports -----------------------------------------------------------------------
 export interface ReportMeta {

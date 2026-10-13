@@ -8,8 +8,9 @@ vi.mock("./api", () => ({
   API_BASE: "http://localhost:8000",
   wsUrl: () => "ws://localhost:8000/ws",
   getIncidents: vi.fn(),
+  getPlayback: vi.fn(),
 }));
-import { getIncidents } from "./api";
+import { getIncidents, getPlayback } from "./api";
 
 function incident(id: string, status: IncidentStatus, created = "2026-10-11T04:00:00Z"): Incident {
   return {
@@ -95,6 +96,12 @@ describe("cmsReducer", () => {
     expect(s.activeAlertId).toBe("B");
   });
 
+  it("starts looping and follows playback messages", () => {
+    expect(initialCmsState.playback).toEqual({ loop: true, held: false });
+    const s = cmsReducer(initialCmsState, { type: "playback", loop: false, held: true });
+    expect(s.playback).toEqual({ loop: false, held: true });
+  });
+
   it("batch applies actions in order", () => {
     const s = cmsReducer(initialCmsState, {
       type: "batch",
@@ -135,6 +142,8 @@ describe("useCmsSocket", () => {
     FakeWebSocket.instances = [];
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.mocked(getIncidents).mockReset();
+    vi.mocked(getPlayback).mockReset();
+    vi.mocked(getPlayback).mockResolvedValue({ loop: true, held: false });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -216,5 +225,13 @@ describe("useCmsSocket", () => {
     const { result } = renderHook(() => useCmsSocket());
     act(() => result.current.applyIncident(incident("A", "APPROVED")));
     expect(result.current.state.incidents["A"].status).toBe("APPROVED");
+  });
+
+  it("loads the playback state on connect, so a page reload shows the right button", async () => {
+    vi.mocked(getIncidents).mockResolvedValue([]);
+    vi.mocked(getPlayback).mockResolvedValue({ loop: false, held: true });
+    const { result } = renderHook(() => useCmsSocket());
+    act(() => FakeWebSocket.instances[0].open());
+    await waitFor(() => expect(result.current.state.playback).toEqual({ loop: false, held: true }));
   });
 });

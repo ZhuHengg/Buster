@@ -15,6 +15,7 @@ from app.escalation.escalator import Escalator, make_escalator
 from app.incidents.service import IncidentService
 from app.incidents.store import IncidentStore
 from app.models import Incident, IncidentStatus, InvalidTransition
+from app.playback import PlaybackControl
 from app.reports import load_reports
 from app.verify.base import Verifier
 from app.verify.mock_verifier import make_verifier
@@ -27,6 +28,10 @@ FRONTEND_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 class DecisionBody(BaseModel):
     operator: str | None = None
+
+
+class LoopBody(BaseModel):
+    loop: bool
 
 
 def probe_sync_info(path: Path) -> dict | None:
@@ -73,7 +78,10 @@ async def _build_pipelines(app: FastAPI) -> list:
             if not path.exists():
                 log.warning("replay file missing for %s: %s (run scripts/precompute.py)", cam.id, path)
                 continue
-            pipelines.append(ReplayPipeline(cam, path, app.state.service, app.state.hub))
+            pipelines.append(
+                ReplayPipeline(cam, path, app.state.service, app.state.hub, suspect_flag_s=settings.suspect_flag_s,
+                               control=app.state.playback)
+            )
         else:
             from app.detect.detector import Detector
 
@@ -82,7 +90,7 @@ async def _build_pipelines(app: FastAPI) -> list:
             pipelines.append(
                 CameraPipeline(
                     cam, settings, detector, make_trigger(settings, cam, buffer), app.state.verifier,
-                    app.state.service, app.state.hub, buffer,
+                    app.state.service, app.state.hub, buffer, control=app.state.playback,
                 )
             )
     return pipelines
@@ -123,6 +131,11 @@ def create_app(
     )
     app.state.settings = settings
     app.state.hub = hub
+
+    async def on_playback(state: dict) -> None:
+        await hub.broadcast({"type": "playback", **state})
+
+    app.state.playback = PlaybackControl(on_playback)
     app.state.service = service
     app.state.cameras = cameras
     app.state.verifier = verifier or make_verifier(settings)
@@ -134,6 +147,21 @@ def create_app(
     @app.get("/api/cameras")
     async def get_cameras() -> list[dict]:
         return [{**c.model_dump(), "sync": sync_info[c.id]} for c in cameras]
+
+    @app.get("/api/playback")
+    async def get_playback() -> dict:
+        return app.state.playback.snapshot()
+
+    @app.post("/api/playback")
+    async def set_playback(body: LoopBody) -> dict:
+        # loop off: every camera plays its clip once and holds; loop on: resume from the start
+        await app.state.playback.set_loop(body.loop)
+        return app.state.playback.snapshot()
+
+    @app.post("/api/playback/restart")
+    async def restart_playback() -> dict:
+        await app.state.playback.restart()
+        return app.state.playback.snapshot()
 
     @app.get("/api/reports")
     async def get_reports() -> dict:

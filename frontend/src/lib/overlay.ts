@@ -28,7 +28,9 @@ export function nearestDetections(list: DetectionsMsg[], pts: number, maxGap = 0
 }
 
 /** Where the clip should be now, extrapolating the last sync message (now = unix seconds). */
-export function expectedPts(sync: SyncMsg, now: number, duration: number): number {
+export function expectedPts(sync: SyncMsg, now: number, duration: number, wrap = true): number {
   const t = sync.pts + (now - sync.wall_time);
+  // not looping: a clip that has finished holds on its last frame instead of wrapping to the start
+  if (!wrap) return Math.min(Math.max(t, 0), duration);
   return ((t % duration) + duration) % duration;
 }

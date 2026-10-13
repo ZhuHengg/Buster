@@ -175,6 +175,8 @@ Current assignment: `case-2.mp4` on CAM-02 (the snatch) and `case-1.mp4` on CAM-
 
 ## Live and replay mode
 
+**Stop the loop to inspect one pass.** The clips loop forever. In the header of the live view, **Stop loop** lets every camera play its clip once and then hold on the last frame (the status shows "Finished" once all cameras have ended; verification and escalation carry on, and incidents stay on screen). **Restart** plays the clips again from the start as a new pass (the detector, trigger and buffer are reset, and the quiet period starts fresh). **Loop clips** turns looping back on and resumes from the start. Backend: `GET/POST /api/playback` (`{"loop": false}`), `POST /api/playback/restart`; the state is pushed to the browser as a `playback` WebSocket message. Works in live and replay mode.
+
 - **Live** (`MODE=live`): each analysed camera runs clip, YOLO + ByteTrack + pose, Rule B, then Claude (or mock) verification. The pipeline drops frames when it cannot keep up, so detection timestamps stay on the wall clock and the overlay stays aligned with the video. With two cameras on one laptop GPU it processes roughly 9 to 14 frames per second per camera.
 - **Replay** (`MODE=replay`): plays precomputed output with the same WebSocket messages and timing, with no GPU work. Generate the files first:
 

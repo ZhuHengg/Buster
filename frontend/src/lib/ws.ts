@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
-import { getIncidents, wsUrl } from "./api";
-import type { DetectionsMsg, Incident, SyncMsg, WsMsg } from "./types";
+import { getIncidents, getPlayback, wsUrl } from "./api";
+import type { DetectionsMsg, Incident, PlaybackState, SyncMsg, WsMsg } from "./types";
 
 export const DETECTION_WINDOW_S = 5;
 const BACKOFF_MS = [1000, 2000, 5000];
@@ -13,9 +13,16 @@ export interface CmsState {
   detections: Record<string, DetectionsMsg[]>; // last 5 s per camera, ordered by pts
   sync: Record<string, SyncMsg>;
   activeAlertId: string | null; // the oldest PENDING_REVIEW incident
+  playback: PlaybackState;
 }
 
-export const initialCmsState: CmsState = { incidents: {}, detections: {}, sync: {}, activeAlertId: null };
+export const initialCmsState: CmsState = {
+  incidents: {},
+  detections: {},
+  sync: {},
+  activeAlertId: null,
+  playback: { loop: true, held: false },
+};
 
 export type CmsAction =
   | WsMsg
@@ -55,6 +62,8 @@ export function cmsReducer(state: CmsState, action: CmsAction): CmsState {
     }
     case "detections":
       return addDetections(state, action);
+    case "playback":
+      return { ...state, playback: { loop: action.loop, held: action.held } };
     case "camera.sync":
       return { ...state, sync: { ...state.sync, [action.camera_id]: action } };
     case "batch":
@@ -115,6 +124,11 @@ export function useCmsSocket(): {
             if (!disposed) dispatch({ type: "incidents.loaded", incidents });
           })
           .catch(() => undefined); // the next reconnect reloads again
+        getPlayback()
+          .then((p) => {
+            if (!disposed) dispatch({ type: "playback", ...p });
+          })
+          .catch(() => undefined);
       };
       ws.onmessage = (e) => {
         try {
