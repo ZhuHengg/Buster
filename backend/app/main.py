@@ -179,6 +179,15 @@ def create_app(
             raise HTTPException(404, "incident not found")
         return incident
 
+    @app.delete("/api/incidents/{incident_id}")
+    async def delete_incident(incident_id: str) -> dict:
+        try:
+            await service.delete(incident_id)
+        except KeyError:
+            raise HTTPException(404, "incident not found")
+        await hub.broadcast({"type": "incident.deleted", "id": incident_id})
+        return {"id": incident_id}
+
     async def _escalate(incident: Incident) -> None:
         camera = cameras_by_id.get(incident.camera_id)
         if camera is None:

@@ -29,6 +29,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export const deleteIncident = (id: string) =>
+  request<{ id: string }>(`/api/incidents/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const getPlayback = () => request<PlaybackState>("/api/playback");
 
 export const setLoop = (loop: boolean) =>

@@ -9,6 +9,8 @@ export interface IncidentTableProps {
   incidents: Incident[];
   selectedId?: string | null;
   onSelect?: (incident: Incident) => void;
+  /** When given, every row gets a remove button (with a confirmation step). */
+  onRemove?: (incident: Incident) => void;
 }
 
 type Filter = "ALL" | IncidentStatus;
@@ -26,8 +28,10 @@ export function StatusChip({ status }: { status: IncidentStatus }) {
   );
 }
 
-export default function IncidentTable({ incidents, selectedId, onSelect }: IncidentTableProps) {
+export default function IncidentTable({ incidents, selectedId, onSelect, onRemove }: IncidentTableProps) {
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const columns = onRemove ? 10 : 9;
 
   const sorted = useMemo(
     () => [...incidents].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
@@ -75,12 +79,17 @@ export default function IncidentTable({ incidents, selectedId, onSelect }: Incid
                   </th>
                 ),
               )}
+              {onRemove && (
+                <th className="border-b border-line px-3 py-2 font-medium">
+                  <span className="sr-only">Remove</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-muted">
+                <td colSpan={columns} className="px-3 py-8 text-center text-muted">
                   No incidents
                 </td>
               </tr>
@@ -111,6 +120,42 @@ export default function IncidentTable({ incidents, selectedId, onSelect }: Incid
                   <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.candidate_s)}</td>
                   <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.verified_s)}</td>
                   <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.call_placed_s)}</td>
+                  {onRemove && (
+                    <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                      {confirmId === i.id ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            aria-label={`Confirm remove ${i.id}`}
+                            className="rounded border border-accent/70 bg-accent/15 px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-accent/30"
+                            onClick={() => {
+                              setConfirmId(null);
+                              onRemove(i);
+                            }}
+                          >
+                            Remove
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-line px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
+                            onClick={() => setConfirmId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${i.id}`}
+                          title="Remove from the log"
+                          className="rounded px-1.5 py-0.5 text-base leading-none text-muted hover:bg-white/10 hover:text-red-300"
+                          onClick={() => setConfirmId(i.id)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}

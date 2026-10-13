@@ -178,3 +178,28 @@ def test_playback_api_gets_sets_and_restarts_and_broadcasts(client):
         assert client.post("/api/playback/restart").status_code == 200
         assert client.app.state.playback.generation == gen + 1
     assert client.get("/api/playback").json()["loop"] is False
+
+
+def test_api_delete_incident_removes_it_and_its_snapshots_and_broadcasts(client, data_dir):
+    snaps = data_dir / "snapshots"
+    snaps.mkdir(exist_ok=True)
+    (snaps / "INC-1_3.jpg").write_bytes(b"jpg")
+    seed(client, "INC-20261011-0001", snapshots=["INC-1_3.jpg"])
+    seed(client, "INC-20261011-0002")
+    with client.websocket_connect("/ws") as ws:
+        res = client.delete("/api/incidents/INC-20261011-0001")
+        assert res.status_code == 200 and res.json() == {"id": "INC-20261011-0001"}
+        assert ws.receive_json() == {"type": "incident.deleted", "id": "INC-20261011-0001"}
+    assert client.get("/api/incidents/INC-20261011-0001").status_code == 404
+    assert [i["id"] for i in client.get("/api/incidents").json()] == ["INC-20261011-0002"]  # others untouched
+    assert not (snaps / "INC-1_3.jpg").exists()
+
+
+def test_api_delete_unknown_incident_is_404(client):
+    assert client.delete("/api/incidents/nope").status_code == 404
+
+
+def test_api_delete_a_pending_incident_clears_it_from_the_queue(client):
+    seed(client, "INC-20261011-0001", S.PENDING_REVIEW)
+    assert client.delete("/api/incidents/INC-20261011-0001").status_code == 200
+    assert client.get("/api/incidents", params={"status": "PENDING_REVIEW"}).json() == []

@@ -34,6 +34,10 @@ class IncidentStore:
             row = conn.execute("SELECT body FROM incidents WHERE id = ?", (incident_id,)).fetchone()
         return Incident.model_validate_json(row[0]) if row else None
 
+    def delete(self, incident_id: str) -> bool:
+        with closing(self._connect()) as conn, conn:
+            return conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,)).rowcount > 0
+
     def list(self, status: IncidentStatus | None = None) -> list[Incident]:
         sql = "SELECT body FROM incidents"
         args: tuple = ()

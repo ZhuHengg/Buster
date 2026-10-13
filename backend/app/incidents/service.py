@@ -119,6 +119,12 @@ class IncidentService:
             self._delete_snapshots(incident)
         return await self._commit(incident)
 
+    async def delete(self, incident_id: str) -> None:
+        """Remove an incident and its snapshots (the operator clearing a log entry). Raises KeyError if unknown."""
+        incident = self._require(incident_id)
+        self._delete_snapshots(incident)
+        self.store.delete(incident_id)
+
     async def approve(self, incident_id: str, operator: str) -> Incident:
         return await self._decide(incident_id, operator, S.APPROVED)
 

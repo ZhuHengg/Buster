@@ -109,4 +109,39 @@ describe("IncidentTable", () => {
     await userEvent.click(screen.getByRole("button", { name: /Pending review/ }));
     expect(screen.getByText(/No incidents/)).toBeInTheDocument();
   });
+
+  describe("removing a log entry", () => {
+    it("has no remove buttons unless the page can remove incidents", () => {
+      render(<IncidentTable incidents={sample} />);
+      expect(screen.queryByRole("button", { name: /^remove/i })).not.toBeInTheDocument();
+    });
+
+    it("asks to confirm, then removes only that incident", async () => {
+      const onRemove = vi.fn();
+      const onSelect = vi.fn();
+      render(<IncidentTable incidents={sample} onRemove={onRemove} onSelect={onSelect} />);
+      await userEvent.click(screen.getByRole("button", { name: "Remove INC-2" }));
+      expect(onRemove).not.toHaveBeenCalled(); // one click is not enough
+      expect(onSelect).not.toHaveBeenCalled(); // and it does not select the row
+      await userEvent.click(screen.getByRole("button", { name: "Confirm remove INC-2" }));
+      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(onRemove).toHaveBeenCalledWith(sample[1]);
+    });
+
+    it("cancel keeps the incident", async () => {
+      const onRemove = vi.fn();
+      render(<IncidentTable incidents={sample} onRemove={onRemove} />);
+      await userEvent.click(screen.getByRole("button", { name: "Remove INC-1" }));
+      await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+      expect(onRemove).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Remove INC-1" })).toBeInTheDocument();
+    });
+
+    it("only one row asks for confirmation at a time", async () => {
+      render(<IncidentTable incidents={sample} onRemove={vi.fn()} />);
+      await userEvent.click(screen.getByRole("button", { name: "Remove INC-1" }));
+      await userEvent.click(screen.getByRole("button", { name: "Remove INC-2" }));
+      expect(screen.getAllByRole("button", { name: /^confirm remove/i })).toHaveLength(1);
+    });
+  });
 });

@@ -212,7 +212,10 @@ class CameraPipeline:
         except Exception as exc:  # any failure must still reach the guard as an unverified alert
             log.warning("verification failed for %s: %s", incident.id, exc)
             error = f"{UNAVAILABLE}: {exc}"
-        await self.service.attach_verification(incident.id, result, error, direction)
+        try:
+            await self.service.attach_verification(incident.id, result, error, direction)
+        except KeyError:
+            log.info("incident %s was removed before its verification arrived", incident.id)
 
 
 class ReplayPipeline:
@@ -308,6 +311,9 @@ class ReplayPipeline:
     ) -> None:
         if self.verify_delay:
             await asyncio.sleep(self.verify_delay)
-        await self.service.attach_verification(
-            incident.id, result, None if result else UNAVAILABLE, direction
-        )
+        try:
+            await self.service.attach_verification(
+                incident.id, result, None if result else UNAVAILABLE, direction
+            )
+        except KeyError:
+            log.info("incident %s was removed before its verification arrived", incident.id)

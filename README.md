@@ -230,6 +230,10 @@ Final `SnatchParams` are the plan defaults: `window_s=3.0`, `proximity_ratio=1.0
 7. `backend/reports/baseline.json` filled from the guard interviews, and `/results` opened once to check it shows real numbers (no mock banner).
 8. Rehearse: reload the page mid-alert (the card must come back), click Approve twice (second is "Already handled").
 
+## Clearing the incident log
+
+Every row of the Incident log page has a × button. It asks for confirmation (Remove / Cancel), then deletes that incident and its snapshots (`DELETE /api/incidents/{id}`) and removes it from every open browser tab. It works on any status, including pending alerts and escalated incidents, so removing one also removes its audit trail. A removed incident whose AI verification is still running is not brought back.
+
 ## Rules the system enforces
 
 - Nothing escalates without guard approval. The escalators refuse any incident not in status `APPROVED`, and approving twice or after a reject returns 409.

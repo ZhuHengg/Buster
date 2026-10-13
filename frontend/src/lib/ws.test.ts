@@ -96,6 +96,16 @@ describe("cmsReducer", () => {
     expect(s.activeAlertId).toBe("B");
   });
 
+  it("removes a deleted incident and moves the alert card to the next pending one", () => {
+    let s = cmsReducer(initialCmsState, updated(incident("A", "PENDING_REVIEW", "2026-10-11T04:00:00Z")));
+    s = cmsReducer(s, updated(incident("B", "PENDING_REVIEW", "2026-10-11T04:00:10Z")));
+    expect(s.activeAlertId).toBe("A");
+    s = cmsReducer(s, { type: "incident.deleted", id: "A" });
+    expect(Object.keys(s.incidents)).toEqual(["B"]);
+    expect(s.activeAlertId).toBe("B");
+    expect(cmsReducer(s, { type: "incident.deleted", id: "nope" }).incidents).toEqual(s.incidents); // unknown id: no-op
+  });
+
   it("starts looping and follows playback messages", () => {
     expect(initialCmsState.playback).toEqual({ loop: true, held: false });
     const s = cmsReducer(initialCmsState, { type: "playback", loop: false, held: true });

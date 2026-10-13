@@ -288,3 +288,15 @@ async def test_replay_suspect_flags_expire_too(camera, tmp_path, service, hub):
     # the candidate (pts 1.0) is injected after that frame is sent, so flags start on frame 11 and last 0.5 s
     assert any(t["suspect"] for t in dets[12]["tracks"])
     assert not any(t["suspect"] for t in dets[29]["tracks"])
+
+
+async def test_incident_removed_while_verifying_is_not_resurrected_and_does_not_crash(camera, tmp_path, service, hub):
+    class DeletingVerifier:
+        async def verify(self, candidate, keyframes, cam):
+            for inc in service.store.list():
+                await service.delete(inc.id)  # the operator removed the log entry mid-verification
+            return await MockVerifier(tmp_path / "none").verify(candidate, keyframes, cam)
+
+    pipe = make_pipeline(camera, tmp_path, service, hub, make_source(30), verifier=DeletingVerifier())
+    await pipe.run()  # must finish cleanly
+    assert service.store.list() == []

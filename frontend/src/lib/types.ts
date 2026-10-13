@@ -128,7 +128,12 @@ export interface PlaybackMsg extends PlaybackState {
   type: "playback";
 }
 
-export type WsMsg = DetectionsMsg | SyncMsg | IncidentUpdatedMsg | PlaybackMsg;
+export interface IncidentDeletedMsg {
+  type: "incident.deleted";
+  id: string;
+}
+
+export type WsMsg = DetectionsMsg | SyncMsg | IncidentUpdatedMsg | IncidentDeletedMsg | PlaybackMsg;
 
 // ---- GET /api/reports -----------------------------------------------------------------------
 export interface ReportMeta {

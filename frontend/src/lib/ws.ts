@@ -55,6 +55,12 @@ export function cmsReducer(state: CmsState, action: CmsAction): CmsState {
   switch (action.type) {
     case "incident.updated":
       return withIncidents(state, { ...state.incidents, [action.incident.id]: action.incident });
+    case "incident.deleted": {
+      if (!(action.id in state.incidents)) return state;
+      const rest = { ...state.incidents };
+      delete rest[action.id];
+      return withIncidents(state, rest);
+    }
     case "incidents.loaded": {
       const next = { ...state.incidents };
       for (const inc of action.incidents) next[inc.id] = inc; // server truth wins
@@ -83,6 +89,7 @@ export function useCmsSocket(): {
   state: CmsState;
   connected: boolean;
   applyIncident: (incident: Incident) => void;
+  removeIncident: (id: string) => void;
 } {
   const [state, dispatch] = useReducer(cmsReducer, initialCmsState);
   const [connected, setConnected] = useState(false);
@@ -161,5 +168,7 @@ export function useCmsSocket(): {
     [],
   );
 
-  return { state, connected, applyIncident };
+  const removeIncident = useCallback((id: string) => dispatch({ type: "incident.deleted", id }), []);
+
+  return { state, connected, applyIncident, removeIncident };
 }
