@@ -16,7 +16,7 @@ async def test_escalate_refuses_non_approved(spy, camera, status):
     twilio = FakeTwilio()
     for escalator in (
         TwilioEscalator(full_settings(), spy, client=twilio, **FAST),
-        DryRunEscalator(spy, delays=(0, 0, 0)),
+        DryRunEscalator(spy, delays=(0, 0, 0, 0)),
     ):
         with pytest.raises(NotApproved):
             await escalator.escalate(inc, camera)
@@ -31,7 +31,7 @@ async def test_twilio_escalator_maps_statuses(spy, incident, camera):
     call = twilio.created_calls[0]
     assert call["to"] == "+60123456789" and call["from_"] == "+15550001"
     assert call["twiml"].startswith("<Response><Say voice=\"alice\">") and "Jalan Limau Manis" in call["twiml"]
-    assert spy.statuses("police_sms") == ["sent"] and spy.statuses("gate_sms") == ["sent"]
+    assert spy.statuses("police_sms") == ["in_progress", "sent"] and spy.statuses("gate_sms") == ["in_progress", "sent"]
     assert {m["to"] for m in twilio.sent} == {"+60123456789", "+60129876543"}
     gate = next(m for m in twilio.sent if m["to"] == "+60129876543")
     assert gate["body"].startswith("INTERCEPT: ")
@@ -48,7 +48,7 @@ async def test_twilio_call_failure_statuses_map_to_failed(spy, incident, camera,
 async def test_sms_failure_does_not_raise(spy, incident, camera):
     twilio = FakeTwilio(sms_error=RuntimeError("sms provider down"))
     await TwilioEscalator(full_settings(), spy, client=twilio, **FAST).escalate(incident, camera)
-    assert spy.statuses("police_sms") == ["failed"] and spy.statuses("gate_sms") == ["failed"]
+    assert spy.statuses("police_sms") == ["in_progress", "failed"] and spy.statuses("gate_sms") == ["in_progress", "failed"]
     assert spy.statuses("police_call")[-1] == "completed"  # call unaffected
 
 
@@ -63,7 +63,7 @@ async def test_call_creation_failure_does_not_raise_and_still_sends_sms(spy, inc
     assert spy.statuses("police_call") == ["queued", "failed"]
     failed = [s for s in spy.steps if s.channel == "police_call"][-1]
     assert "geo permission" in failed.detail
-    assert spy.statuses("police_sms") == ["sent"]
+    assert spy.statuses("police_sms") == ["in_progress", "sent"]
 
 
 async def test_missing_gate_number_skipped(spy, incident, camera):
@@ -75,9 +75,9 @@ async def test_missing_gate_number_skipped(spy, incident, camera):
 
 
 async def test_dry_run_emits_ringing_then_completed(spy, incident, camera):
-    await DryRunEscalator(spy, delays=(0.0, 0.0, 0.0)).escalate(incident, camera)
+    await DryRunEscalator(spy, delays=(0.0, 0.0, 0.0, 0.0)).escalate(incident, camera)
     assert spy.statuses("police_call") == ["queued", "ringing", "in_progress", "completed"]
-    assert spy.statuses("police_sms") == ["sent"] and spy.statuses("gate_sms") == ["sent"]
+    assert spy.statuses("police_sms") == ["in_progress", "sent"] and spy.statuses("gate_sms") == ["in_progress", "sent"]
     assert all(s.detail and "dry run" in s.detail.lower() for s in spy.steps)
 
 
@@ -87,3 +87,23 @@ def test_make_escalator_selects_by_credentials(spy):
     assert isinstance(make_escalator(full_settings(police_number=None), spy), DryRunEscalator)
     assert isinstance(make_escalator(full_settings(twilio_account_sid=None), spy), DryRunEscalator)
     assert isinstance(make_escalator(full_settings(twilio_from_number=None), spy), DryRunEscalator)
+
+
+def _first_seen(spy):
+    order = []
+    for step in spy.steps:
+        if step.channel not in order:
+            order.append(step.channel)
+    return order
+
+
+async def test_escalation_runs_gate_alert_then_police_sms_then_police_call(spy, incident, camera):
+    await TwilioEscalator(full_settings(), spy, client=FakeTwilio(), **FAST).escalate(incident, camera)
+    assert _first_seen(spy) == ["gate_sms", "police_sms", "police_call"]
+    sent = [s.channel for s in spy.steps if s.status == "sent"]
+    assert sent == ["gate_sms", "police_sms"]  # both SMS were out before the call was placed
+
+
+async def test_dry_run_follows_the_same_order(spy, incident, camera):
+    await DryRunEscalator(spy, delays=(0.0, 0.0, 0.0, 0.0)).escalate(incident, camera)
+    assert _first_seen(spy) == ["gate_sms", "police_sms", "police_call"]

@@ -222,7 +222,7 @@ describe("AlertCard", () => {
 });
 
 describe("EscalationTimeline", () => {
-  it("shows police call, police SMS and gate rows with their state", () => {
+  it("lists the steps in the order the system acts: gate alert, police SMS, then the police call", () => {
     render(
       <EscalationTimeline
         gateLabel="Gate B"
@@ -231,19 +231,19 @@ describe("EscalationTimeline", () => {
     );
     const rows = screen.getAllByRole("listitem");
     expect(rows).toHaveLength(3);
-    expect(within(rows[0]).getByText("Police call")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("Completed")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Gate B alert")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Failed")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Police SMS")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Sent")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Gate B alert")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Failed")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Police call")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Completed")).toBeInTheDocument();
   });
 
   it("shows pending rows before any step arrives, and skipped steps", () => {
     render(<EscalationTimeline steps={[step("gate_sms", "skipped")]} />);
     const rows = screen.getAllByRole("listitem");
-    expect(within(rows[0]).getByText("Waiting")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Skipped")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Gate alert")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Waiting")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Skipped")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Gate alert")).toBeInTheDocument();
   });
 });

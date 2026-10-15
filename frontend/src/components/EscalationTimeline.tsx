@@ -78,10 +78,11 @@ export default function EscalationTimeline({
   compact?: boolean; // tighter text, for the alert card
 }) {
   const by = new Map<Channel, EscalationStep>(steps.map((s) => [s.channel, s]));
+  // the order the system acts in: close the exit first, then tell the police by SMS, then phone them
   const rows: { channel: Channel; label: string }[] = [
-    { channel: "police_call", label: "Police call" },
-    { channel: "police_sms", label: "Police SMS" },
     { channel: "gate_sms", label: gateLabel ? `${gateLabel} alert` : "Gate alert" },
+    { channel: "police_sms", label: "Police SMS" },
+    { channel: "police_call", label: "Police call" },
   ];
   return (
     <ol className="grid grid-cols-3" aria-label="Escalation progress">

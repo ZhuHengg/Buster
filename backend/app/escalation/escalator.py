@@ -64,8 +64,12 @@ class TwilioEscalator:
         self.client = client
 
     async def escalate(self, incident: Incident, camera: CameraConfig) -> None:
+        """Gate alert first (the exit can be closed while the call connects), then the police SMS, then
+        the police call. Each step is isolated: a failed SMS never stops the call."""
         _require_approved(incident)
         operator = incident.operator or self.settings.operator_name
+        await self._send_sms(incident, camera, "gate_sms", self.settings.gate_number, for_gate=True)
+        await self._send_sms(incident, camera, "police_sms", self.settings.police_number, for_gate=False)
         await _mark(self.service, incident, "police_call", "queued")
         twiml = f'<Response><Say voice="alice">{xml_escape(build_call_script(incident, camera, operator))}</Say></Response>'
         sid: str | None = None
@@ -77,14 +81,11 @@ class TwilioEscalator:
                 twiml=twiml,
             )
             sid = call.sid
-        except Exception as exc:  # never lose the SMS because the call could not be placed
+        except Exception as exc:
             log.exception("police call failed for %s", incident.id)
             await _mark(self.service, incident, "police_call", "failed", str(exc))
-        await asyncio.gather(
-            self._poll_call(incident, sid) if sid else asyncio.sleep(0),
-            self._send_sms(incident, camera, "police_sms", self.settings.police_number, for_gate=False),
-            self._send_sms(incident, camera, "gate_sms", self.settings.gate_number, for_gate=True),
-        )
+        if sid:
+            await self._poll_call(incident, sid)
 
     async def _poll_call(self, incident: Incident, sid: str) -> None:
         last = "queued"
@@ -109,6 +110,7 @@ class TwilioEscalator:
         if not number:
             await _mark(self.service, incident, channel, "skipped", "no number configured")
             return
+        await _mark(self.service, incident, channel, "in_progress")
         try:
             await asyncio.to_thread(
                 self.client.messages.create,
@@ -124,23 +126,27 @@ class TwilioEscalator:
 
 
 class DryRunEscalator:
-    """No credentials: simulates the escalation so the demo runs end to end."""
+    """No credentials: simulates the escalation so the demo runs end to end, in the real order:
+    gate alert, police SMS, then the police call."""
 
-    def __init__(self, service: Any, delays: tuple[float, float, float] = (0.5, 1.5, 4.0)):
+    def __init__(self, service: Any, delays: tuple[float, float, float, float] = (0.8, 0.5, 1.5, 4.0)):
         self.service = service
-        self.delays = delays
+        self.delays = delays  # seconds: each SMS, call queued, call ringing, call in progress
 
     async def escalate(self, incident: Incident, camera: CameraConfig) -> None:
         _require_approved(incident)
+        sms_s, queued_s, ringing_s, talking_s = self.delays
         note = "Dry run: no real call placed"
+        for channel in ("gate_sms", "police_sms"):
+            await _mark(self.service, incident, channel, "in_progress", "Dry run: no real SMS sent")
+            await asyncio.sleep(sms_s)
+            await _mark(self.service, incident, channel, "sent", "Dry run: no real SMS sent")
         await _mark(self.service, incident, "police_call", "queued", note)
-        await asyncio.sleep(self.delays[0])
+        await asyncio.sleep(queued_s)
         await _mark(self.service, incident, "police_call", "ringing", note)
-        await _mark(self.service, incident, "police_sms", "sent", "Dry run: no real SMS sent")
-        await _mark(self.service, incident, "gate_sms", "sent", "Dry run: no real SMS sent")
-        await asyncio.sleep(self.delays[1])
+        await asyncio.sleep(ringing_s)
         await _mark(self.service, incident, "police_call", "in_progress", note)
-        await asyncio.sleep(self.delays[2])
+        await asyncio.sleep(talking_s)
         await _mark(self.service, incident, "police_call", "completed", note)
 
 
