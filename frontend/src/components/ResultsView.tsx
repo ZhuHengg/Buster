@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { getReports } from "@/lib/api";
-import { TOWNSHIP_NAME } from "@/lib/config";
 import type { DemoOutcome, ReportMeta, ReportsResponse } from "@/lib/types";
 
+import { CmsHeader } from "./CameraGrid";
 import KpiTile from "./KpiTile";
 import LatencyBars, { stagesFrom } from "./LatencyBars";
 import ScaleChart from "./ScaleChart";
@@ -28,7 +27,7 @@ const GOOD: DemoOutcome[] = ["detected", "clean", "filtered_by_ai"];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-line bg-panel p-4">
+    <section className="flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
       <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
       {children}
     </section>
@@ -64,28 +63,14 @@ export default function ResultsView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2">
-        <div className="flex items-baseline gap-3">
-          <span className="text-sm font-semibold tracking-wide text-slate-100">{TOWNSHIP_NAME}</span>
-          <span className="text-xs uppercase tracking-[0.18em] text-muted">Central Monitoring System</span>
-        </div>
-        <nav className="flex items-center gap-5 text-xs">
-          <Link href="/" className="text-slate-200 underline-offset-4 hover:underline">
-            Live monitoring
-          </Link>
-          <Link href="/incidents" className="text-slate-200 underline-offset-4 hover:underline">
-            Incidents
-          </Link>
-        </nav>
-      </header>
+      <CmsHeader title="Analysis" subtitle="How accurate, how fast and how far the system scales" />
       <main className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-        <h1 className="text-lg font-semibold text-slate-100">Results</h1>
         {failed && <p className="text-sm text-warn">Could not load reports: the backend is not reachable.</p>}
         {!data && !failed && <p className="text-sm text-muted">Loading…</p>}
         {data && (
           <>
             {bench?.meta.verifier === "mock" && (
-              <div role="alert" className="rounded-md border border-warn bg-panel2 p-3 text-sm text-warn">
+              <div role="alert" className="rounded-xl border border-warn bg-panel2 p-3 text-sm text-warn">
                 Results use a mock AI verifier and are not valid evidence. Re-run the benchmark with a real verifier.
               </div>
             )}

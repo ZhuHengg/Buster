@@ -34,7 +34,7 @@ export default function IncidentDetail({ incident, camera }: { incident: Inciden
       <video
         key={incident.id}
         src={clipUrl(incident.clip_file, incident.clip_start, incident.clip_end)}
-        className="aspect-video w-full rounded-md border border-line bg-black object-contain"
+        className="aspect-video w-full rounded-xl border border-line bg-black object-contain"
         muted
         controls
         playsInline
@@ -48,13 +48,13 @@ export default function IncidentDetail({ incident, camera }: { incident: Inciden
               key={file}
               src={snapshotUrl(file)}
               alt={`Suspect snapshot ${i + 1}`}
-              className="h-20 rounded-md border border-line bg-black object-contain"
+              className="h-20 rounded-xl border border-line bg-black object-contain"
             />
           ))}
         </div>
       )}
 
-      <dl className="rounded-md border border-line bg-panel2 px-3 py-1">
+      <dl className="rounded-xl border border-line bg-panel2 px-3 py-1">
         {v ? (
           <>
             <Field label="AI verdict">

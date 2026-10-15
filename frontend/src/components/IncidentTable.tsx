@@ -68,7 +68,7 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
         ))}
       </div>
 
-      <div className="min-h-0 overflow-auto rounded-md border border-line">
+      <div className="min-h-0 overflow-auto rounded-xl border border-line">
         <table className="w-full min-w-[860px] border-collapse text-left text-sm">
           <thead className="sticky top-0 bg-panel text-xs uppercase tracking-wide text-muted">
             <tr>

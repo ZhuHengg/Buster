@@ -122,6 +122,7 @@ export interface IncidentUpdatedMsg {
 export interface PlaybackState {
   loop: boolean; // false: every camera plays its clip once and holds
   held: boolean; // every camera has finished its pass and is holding
+  paused: boolean; // every camera is frozen on its current frame
 }
 
 export interface PlaybackMsg extends PlaybackState {

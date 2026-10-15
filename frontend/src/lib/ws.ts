@@ -21,7 +21,7 @@ export const initialCmsState: CmsState = {
   detections: {},
   sync: {},
   activeAlertId: null,
-  playback: { loop: true, held: false },
+  playback: { loop: true, held: false, paused: false },
 };
 
 export type CmsAction =
@@ -69,7 +69,7 @@ export function cmsReducer(state: CmsState, action: CmsAction): CmsState {
     case "detections":
       return addDetections(state, action);
     case "playback":
-      return { ...state, playback: { loop: action.loop, held: action.held } };
+      return { ...state, playback: { loop: action.loop, held: action.held, paused: action.paused } };
     case "camera.sync":
       return { ...state, sync: { ...state.sync, [action.camera_id]: action } };
     case "batch":

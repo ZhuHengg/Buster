@@ -11,7 +11,7 @@ export interface KpiTileProps {
 
 export default function KpiTile({ label, value, note, compare }: KpiTileProps) {
   return (
-    <div data-kpi className="flex flex-col gap-1 rounded-md border border-line bg-panel p-4">
+    <div data-kpi className="flex flex-col gap-1 rounded-xl border border-line bg-panel p-4">
       <div className="text-xs text-muted">{label}</div>
       <div className="text-3xl font-semibold text-slate-100">{value}</div>
       {compare ? <div className="text-xs text-slate-300">{compare}</div> : null}

@@ -27,18 +27,25 @@ class ClipSource:
         self.duration: float = cap.get(cv2.CAP_PROP_FRAME_COUNT) / self.fps
         cap.release()
         self.start_wall_time: float = time.time()
+        self._loop_start: float = time.perf_counter()
+
+    def delay(self, seconds: float) -> None:
+        """Push the playback clock back (the clip was paused): the next frame follows the last one
+        instead of skipping ahead to catch up with the wall clock."""
+        self._loop_start += seconds
+        self.start_wall_time += seconds
 
     def __iter__(self) -> Iterator[tuple[np.ndarray, float, int]]:
         cap = cv2.VideoCapture(str(self.path))
         loop = 0
         index = 0
         self.start_wall_time = time.time()
-        loop_start = time.perf_counter()
+        self._loop_start = time.perf_counter()
         try:
             while True:
                 if self.realtime:
                     # a slow consumer must not fall behind the wall clock: skip stale frames
-                    behind = int((time.perf_counter() - (loop_start + index / self.fps)) * self.fps)
+                    behind = int((time.perf_counter() - (self._loop_start + index / self.fps)) * self.fps)
                     for _ in range(behind):
                         if not cap.grab():
                             break
@@ -51,11 +58,11 @@ class ClipSource:
                     loop += 1
                     index = 0
                     self.start_wall_time = time.time()
-                    loop_start = time.perf_counter()
+                    self._loop_start = time.perf_counter()
                     continue
                 pts = index / self.fps
                 if self.realtime:
-                    delay = loop_start + pts - time.perf_counter()
+                    delay = self._loop_start + pts - time.perf_counter()
                     if delay > 0:
                         time.sleep(delay)
                 yield frame, pts, loop

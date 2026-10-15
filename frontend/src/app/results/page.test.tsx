@@ -55,7 +55,7 @@ function reports(over: Partial<ReportsResponse> = {}): ReportsResponse {
 async function show(r: ReportsResponse) {
   getReports.mockResolvedValue(r);
   render(<ResultsPage />);
-  await screen.findByRole("heading", { name: /results/i });
+  await screen.findByRole("heading", { name: /analysis/i });
 }
 
 // the KPI tile whose own label matches (the same words also appear in chart labels)

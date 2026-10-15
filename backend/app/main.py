@@ -34,6 +34,10 @@ class LoopBody(BaseModel):
     loop: bool
 
 
+class PauseBody(BaseModel):
+    paused: bool
+
+
 def probe_sync_info(path: Path) -> dict | None:
     """fps / duration / size of a clip, for the frontend's playback sync."""
     if not path.exists():
@@ -156,6 +160,12 @@ def create_app(
     async def set_playback(body: LoopBody) -> dict:
         # loop off: every camera plays its clip once and holds; loop on: resume from the start
         await app.state.playback.set_loop(body.loop)
+        return app.state.playback.snapshot()
+
+    @app.post("/api/playback/pause")
+    async def pause_playback(body: PauseBody) -> dict:
+        # every camera freezes on its current frame (alerts already raised carry on); resume continues
+        await app.state.playback.set_paused(body.paused)
         return app.state.playback.snapshot()
 
     @app.post("/api/playback/restart")

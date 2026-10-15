@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { clipUrl, snapshotUrl } from "@/lib/api";
@@ -12,7 +13,7 @@ export interface AlertCardProps {
   camera: CameraConfig | undefined;
   onApprove: () => void;
   onReject: () => void;
-  onClose: () => void; // only offered once the alert has been decided
+  onClose: () => void; // hides the panel; a pending alert stays pending and can be reopened
   busy: boolean;
   queueCount?: number; // other alerts still waiting behind this one
 }
@@ -101,6 +102,7 @@ export default function AlertCard({
         const k = e.key.toLowerCase();
         if (k === "a") keysRef.current.approve();
         else if (k === "r") keysRef.current.reject();
+        else if (k === "escape") onClose();
       };
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
@@ -136,7 +138,7 @@ export default function AlertCard({
       ref={panelRef}
       tabIndex={-1}
       aria-label="Security alert"
-      className="card-in flex h-full w-[480px] max-w-[45vw] shrink-0 flex-col border-l-2 border-accent bg-panel shadow-2xl"
+      className="card-in flex h-full w-[460px] max-w-[45vw] shrink-0 flex-col border-l-2 border-accent bg-panel shadow-2xl"
     >
       {pending && (
         <div role="alert" className="sr-only">
@@ -165,18 +167,16 @@ export default function AlertCard({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="mono-time rounded border border-line px-2 py-1 text-xs text-muted">{incident.id}</span>
-          {!pending && (
-            <button
-              ref={closeRef}
-              type="button"
-              onClick={onClose}
-              aria-label="Close alert"
-              title="Close (Esc)"
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-line text-lg leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
-            >
-              ×
-            </button>
-          )}
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close alert"
+            title={pending ? "Close for now (Esc). The alert stays pending: reopen it with Review alerts" : "Close (Esc)"}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-lg leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            ×
+          </button>
         </div>
       </header>
 
@@ -186,12 +186,22 @@ export default function AlertCard({
             Approved by {incident.operator ?? "operator"}
           </div>
           <EscalationTimeline compact steps={incident.escalation} gateLabel={gateLabel} />
+          <Link
+            href="/trace"
+            className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-info/15 px-3 py-2 text-sm font-semibold text-info transition hover:bg-info/25"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z" />
+              <circle cx="12" cy="10" r="2.6" />
+            </svg>
+            Track suspect on live map
+          </Link>
         </div>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
         {!v && (
-          <div className="rounded-md border border-warn/60 bg-warn/10 px-3 py-2 text-sm font-medium text-warn">
+          <div className="rounded-xl border border-warn/60 bg-warn/10 px-3 py-2 text-sm font-medium text-warn">
             AI verification unavailable: operator to confirm
           </div>
         )}
@@ -199,7 +209,7 @@ export default function AlertCard({
         <video
           key={incident.id}
           src={clipUrl(incident.clip_file, incident.clip_start, incident.clip_end)}
-          className="aspect-video w-full rounded-md border border-line bg-black object-contain"
+          className="aspect-video w-full rounded-xl border border-line bg-black object-contain"
           muted
           autoPlay
           playsInline
@@ -223,7 +233,7 @@ export default function AlertCard({
                   key={file}
                   src={snapshotUrl(file)}
                   alt={`Suspect snapshot ${i + 1}`}
-                  className="h-24 rounded-md border border-line bg-black object-contain"
+                  className="h-24 rounded-xl border border-line bg-black object-contain"
                 />
               ))}
             </div>
@@ -234,7 +244,7 @@ export default function AlertCard({
           {v ? v.summary : "A motorcycle snatch theft was flagged by the detector. Review the clip and confirm."}
         </p>
 
-        <dl className="rounded-md border border-line bg-panel2 px-3 py-1">
+        <dl className="rounded-xl border border-line bg-panel2 px-3 py-1">
           <Row label="Camera">
             {incident.camera_id}
             {camera ? ` · ${camera.name}` : ""}
@@ -259,7 +269,7 @@ export default function AlertCard({
               onClick={act(onApprove)}
               disabled={busy}
               aria-keyshortcuts="A"
-              className="rounded-md bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve &amp; escalate
               <Kbd>A</Kbd>
@@ -269,7 +279,7 @@ export default function AlertCard({
               onClick={act(onReject)}
               disabled={busy}
               aria-keyshortcuts="R"
-              className="rounded-md border border-slate-500 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl border border-slate-500 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Reject (false positive)
               <Kbd>R</Kbd>

@@ -3,14 +3,17 @@
 The demo clips are short and loop forever, which makes it hard to see what the system did. With
 loop off each camera plays its clip once and holds at the end (verification and escalation carry on).
 `restart` plays the clip again from the start, and turning loop back on also resumes from the start.
+`pause` freezes every camera on its current frame; resuming continues from the same frame.
 """
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 
 
 class PlaybackControl:
     def __init__(self, on_change: Callable[[dict], Awaitable[None]] | None = None):
         self.loop = True
+        self.paused = False
         self.generation = 0  # bumped by restart(): pipelines compare it to the one they started with
         self.on_change = on_change
         self._running: set[str] = set()
@@ -23,7 +26,7 @@ class PlaybackControl:
         return bool(self._running) and self._held >= self._running
 
     def snapshot(self) -> dict:
-        return {"loop": self.loop, "held": self.held}
+        return {"loop": self.loop, "held": self.held, "paused": self.paused}
 
     async def _notify(self) -> None:
         if self.on_change is not None:
@@ -42,6 +45,24 @@ class PlaybackControl:
             self.loop = loop
             self._cond.notify_all()
         await self._notify()
+
+    async def set_paused(self, paused: bool) -> None:
+        async with self._cond:
+            if paused == self.paused:
+                return
+            self.paused = paused
+            self._cond.notify_all()
+        await self._notify()
+
+    async def wait_resumed(self) -> float:
+        """Returns at once when not paused; otherwise waits for resume. Returns the seconds spent paused
+        so the caller can push its own clock forward by that much (the clip continues, it does not jump)."""
+        if not self.paused:
+            return 0.0
+        began = time.perf_counter()
+        async with self._cond:
+            await self._cond.wait_for(lambda: not self.paused)
+        return time.perf_counter() - began
 
     async def restart(self) -> None:
         async with self._cond:

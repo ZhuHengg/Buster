@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 import { OPERATOR_NAME, TOWNSHIP_NAME } from "@/lib/config";
 import type { CmsState } from "@/lib/ws";
 import type { CameraConfig } from "@/lib/types";
@@ -9,24 +7,76 @@ import type { CameraConfig } from "@/lib/types";
 import CameraTile from "./CameraTile";
 import PlaybackControls from "./PlaybackControls";
 
-export function CmsHeader({ connected, children }: { connected: boolean; children?: React.ReactNode }) {
+export function CmsHeader({
+  connected,
+  title,
+  subtitle,
+  children,
+}: {
+  connected?: boolean; // omitted on pages that have no live connection
+  title: string;
+  subtitle?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2">
-      <div className="flex items-baseline gap-3">
-        <span className="text-sm font-semibold tracking-wide text-slate-100">{TOWNSHIP_NAME}</span>
-        <span className="text-xs uppercase tracking-[0.18em] text-muted">Central Monitoring System</span>
+    <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line px-5 py-3">
+      <div className="min-w-0">
+        <h1 className="truncate text-lg font-semibold text-slate-50">{title}</h1>
+        <div className="truncate text-xs text-muted">{subtitle ?? `${TOWNSHIP_NAME} · Central Monitoring System`}</div>
       </div>
-      <div className="flex items-center gap-5 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
         {children}
-        <span>
-          Operator <span className="font-medium text-slate-200">{OPERATOR_NAME}</span>
-        </span>
-        <span className="flex items-center gap-1.5" role="status">
-          <span className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "rec-dot bg-accent"}`} />
-          {connected ? "Live" : "Reconnecting"}
+        {connected !== undefined && (
+          <span
+            role="status"
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium ${
+              connected ? "border-ok/40 bg-ok/10 text-ok" : "border-accent/50 bg-accent/10 text-red-300"
+            }`}
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "rec-dot bg-accent"}`} />
+            {connected ? "Live" : "Reconnecting"}
+          </span>
+        )}
+        <span className="flex items-center gap-2 rounded-full border border-line bg-panel py-1 pl-1 pr-3 text-slate-200">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-info/20 text-[11px] font-semibold text-info">
+            {OPERATOR_NAME.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+          </span>
+          {OPERATOR_NAME}
         </span>
       </div>
     </header>
+  );
+}
+
+function StatTile({
+  tone,
+  value,
+  label,
+  hint,
+  onClick,
+}: {
+  tone: string;
+  value: string;
+  label: string;
+  hint: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <div className="text-2xl font-bold leading-none">{value}</div>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold leading-tight">{label}</div>
+        <div className="truncate text-[11px] leading-tight opacity-70">{hint}</div>
+      </div>
+    </>
+  );
+  const cls = `flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-slate-900 ${tone}`;
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${cls} transition hover:brightness-95`}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
@@ -35,27 +85,46 @@ export interface CameraGridProps {
   state: CmsState;
   connected: boolean;
   pendingCount?: number;
+  onReview?: () => void; // reopen the alert panel after it was closed
 }
 
-export default function CameraGrid({ cameras, state, connected, pendingCount = 0 }: CameraGridProps) {
+export default function CameraGrid({ cameras, state, connected, pendingCount = 0, onReview }: CameraGridProps) {
   const alertCamera = state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined;
+  const incidents = Object.values(state.incidents);
+  const online = cameras.filter((c) => c.clip !== null).length;
+  const escalated = incidents.filter((i) => i.status === "ESCALATED" || i.status === "APPROVED").length;
+  const dismissed = incidents.filter((i) => i.status === "REJECTED" || i.status === "AI_REJECTED").length;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CmsHeader connected={connected}>
+      <CmsHeader
+        connected={connected}
+        title="Live monitoring"
+        subtitle={`${online} of ${cameras.length} cameras online · ${TOWNSHIP_NAME}`}
+      >
         <PlaybackControls playback={state.playback} />
-        {pendingCount > 0 && (
-          <span className="rounded border border-accent/60 bg-accent/10 px-2 py-0.5 font-medium text-red-300">
-            {pendingCount} pending {pendingCount === 1 ? "alert" : "alerts"}
-          </span>
+        {pendingCount > 0 && onReview && (
+          <button
+            type="button"
+            onClick={onReview}
+            className="rounded-full border border-accent/60 bg-accent/15 px-3 py-1 font-semibold text-red-200 transition hover:bg-accent/25"
+          >
+            Review {pendingCount} {pendingCount === 1 ? "alert" : "alerts"}
+          </button>
         )}
-        <Link href="/incidents" className="text-slate-200 underline-offset-4 hover:underline">
-          Incidents
-        </Link>
-        <Link href="/results" className="text-slate-200 underline-offset-4 hover:underline">
-          Results
-        </Link>
       </CmsHeader>
-      <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-2 p-2">
+      <div className="grid shrink-0 grid-cols-2 gap-3 px-4 pt-4 lg:grid-cols-4">
+        <StatTile tone="bg-tile-blue" value={`${online}/${cameras.length}`} label="Cameras online" hint="Feeds streaming now" />
+        <StatTile
+          tone="bg-tile-rose"
+          value={String(pendingCount)}
+          label="Awaiting your review"
+          hint={pendingCount > 0 ? "Click to open" : "Nothing waiting"}
+          onClick={pendingCount > 0 ? onReview : undefined}
+        />
+        <StatTile tone="bg-tile-mint" value={String(escalated)} label="Escalated to police" hint="Approved by an operator" />
+        <StatTile tone="bg-tile-sand" value={String(dismissed)} label="Dismissed" hint="False alarms rejected" />
+      </div>
+      <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-3 p-4">
         {cameras.map((camera) => (
           <CameraTile
             key={camera.id}

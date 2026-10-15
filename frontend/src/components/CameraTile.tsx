@@ -32,18 +32,28 @@ export default function CameraTile({
   detections,
   sync,
   alerting,
-  playback = { loop: true, held: false },
+  playback = { loop: true, held: false, paused: false },
 }: CameraTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detRef = useRef(detections);
   const syncRef = useRef(sync);
   const loopRef = useRef(playback.loop);
+  const pausedRef = useRef(playback.paused);
   useEffect(() => {
     detRef.current = detections;
     syncRef.current = sync;
     loopRef.current = playback.loop;
+    pausedRef.current = playback.paused;
   });
+
+  // freeze on the current frame while paused; on resume the sync loop below re-aligns the clip
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (playback.paused) video.pause();
+    else void video.play().catch(() => undefined);
+  }, [playback.paused]);
   const clock = useClock();
   const duration = camera.sync?.duration;
 
@@ -58,7 +68,7 @@ export default function CameraTile({
 
       // keep the video on the pipeline's clock; the wrap-around distance counts as small drift
       const s = syncRef.current;
-      if (s && duration && !video.seeking && video.readyState >= 2) {
+      if (s && duration && !pausedRef.current && !video.seeking && video.readyState >= 2) {
         const looping = loopRef.current;
         const target = expectedPts(s, Date.now() / 1000, duration, looping);
         const drift = Math.abs(video.currentTime - target);
@@ -112,16 +122,16 @@ export default function CameraTile({
 
   return (
     <div
-      className={`relative min-h-0 overflow-hidden rounded-md border border-line bg-black ${
+      className={`relative min-h-0 overflow-hidden rounded-2xl border border-line bg-black ${
         alerting ? "tile-alerting border-accent" : ""
       }`}
       data-testid={`tile-${camera.id}`}
     >
       {lost ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0b0e13] text-muted">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-panel text-muted/70">
           <svg
-            width="28"
-            height="28"
+            width="26"
+            height="26"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -135,7 +145,8 @@ export default function CameraTile({
             <path d="M9.5 4h5L16 7h4a2 2 0 0 1 2 2v7.5" />
             <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
           </svg>
-          <span className="font-mono text-xs tracking-[0.3em]">SIGNAL LOST</span>
+          <span className="text-xs font-medium">Offline</span>
+          <span className="text-[10px]">No video feed (not connected in this demo)</span>
         </div>
       ) : (
         <>
@@ -153,9 +164,20 @@ export default function CameraTile({
           <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         </>
       )}
-      <div className="pointer-events-none absolute left-0 right-0 top-0 flex items-start justify-between gap-2 bg-gradient-to-b from-black/80 to-transparent px-2.5 py-1.5">
-        <span className="truncate font-mono text-[11px] font-medium uppercase tracking-wide text-slate-100">
-          {camera.id} · {camera.name}
+      {!lost && playback.paused && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35">
+          <span className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold tracking-wide text-warn">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden>
+              <rect x="6" y="4.5" width="4.2" height="15" rx="1" />
+              <rect x="13.8" y="4.5" width="4.2" height="15" rx="1" />
+            </svg>
+            Paused
+          </span>
+        </div>
+      )}
+      <div className="pointer-events-none absolute left-0 right-0 top-0 flex items-start justify-between gap-2 bg-gradient-to-b from-black/80 to-transparent px-3 py-2">
+        <span className="truncate text-[11px] font-semibold tracking-wide text-slate-100">
+          <span className="mono-time text-slate-300">{camera.id}</span> · {camera.name}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-slate-100">
           {!lost && <span role="img" aria-label="recording" className="inline-block h-2 w-2 rounded-full bg-accent" />}

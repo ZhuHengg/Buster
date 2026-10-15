@@ -81,7 +81,7 @@ export default function EscalationTimeline({
             <li
               key={channel}
               title={step?.detail ?? undefined}
-              className="flex min-w-0 flex-col gap-1.5 rounded-md border border-line bg-panel2 px-2.5 py-2"
+              className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-panel2 px-2.5 py-2"
             >
               <div className="flex items-center gap-2">
                 <Icon status={step?.status ?? "waiting"} />
@@ -103,7 +103,7 @@ export default function EscalationTimeline({
       {rows.map(({ channel, label }) => {
         const step = by.get(channel);
         return (
-          <li key={channel} className="flex items-center gap-3 rounded-md border border-line bg-panel2 px-3 py-2">
+          <li key={channel} className="flex items-center gap-3 rounded-xl border border-line bg-panel2 px-3 py-2">
             <Icon status={step?.status ?? "waiting"} />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-slate-100">{label}</div>

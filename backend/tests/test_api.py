@@ -170,14 +170,22 @@ def test_ws_receives_incident_updates_from_service(client):
 
 
 def test_playback_api_gets_sets_and_restarts_and_broadcasts(client):
-    assert client.get("/api/playback").json() == {"loop": True, "held": False}
+    assert client.get("/api/playback").json() == {"loop": True, "held": False, "paused": False}
     with client.websocket_connect("/ws") as ws:
-        assert client.post("/api/playback", json={"loop": False}).json() == {"loop": False, "held": False}
-        assert ws.receive_json() == {"type": "playback", "loop": False, "held": False}
+        assert client.post("/api/playback", json={"loop": False}).json() == {"loop": False, "held": False, "paused": False}
+        assert ws.receive_json() == {"type": "playback", "loop": False, "held": False, "paused": False}
         gen = client.app.state.playback.generation
         assert client.post("/api/playback/restart").status_code == 200
         assert client.app.state.playback.generation == gen + 1
     assert client.get("/api/playback").json()["loop"] is False
+
+
+def test_playback_pause_endpoint_pauses_resumes_and_broadcasts(client):
+    with client.websocket_connect("/ws") as ws:
+        assert client.post("/api/playback/pause", json={"paused": True}).json()["paused"] is True
+        assert ws.receive_json()["paused"] is True
+        assert client.post("/api/playback/pause", json={"paused": False}).json()["paused"] is False
+        assert ws.receive_json()["paused"] is False
 
 
 def test_api_delete_incident_removes_it_and_its_snapshots_and_broadcasts(client, data_dir):

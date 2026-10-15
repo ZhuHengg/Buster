@@ -41,6 +41,13 @@ export const setLoop = (loop: boolean) =>
     body: JSON.stringify({ loop }),
   });
 
+export const setPaused = (paused: boolean) =>
+  request<PlaybackState>("/api/playback/pause", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paused }),
+  });
+
 export const restartPlayback = () => request<PlaybackState>("/api/playback/restart", { method: "POST" });
 
 export const getReports = () => request<ReportsResponse>("/api/reports");

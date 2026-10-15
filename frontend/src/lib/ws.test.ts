@@ -107,9 +107,9 @@ describe("cmsReducer", () => {
   });
 
   it("starts looping and follows playback messages", () => {
-    expect(initialCmsState.playback).toEqual({ loop: true, held: false });
-    const s = cmsReducer(initialCmsState, { type: "playback", loop: false, held: true });
-    expect(s.playback).toEqual({ loop: false, held: true });
+    expect(initialCmsState.playback).toEqual({ loop: true, held: false, paused: false });
+    const s = cmsReducer(initialCmsState, { type: "playback", loop: false, held: true, paused: true });
+    expect(s.playback).toEqual({ loop: false, held: true, paused: true });
   });
 
   it("batch applies actions in order", () => {
@@ -153,7 +153,7 @@ describe("useCmsSocket", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.mocked(getIncidents).mockReset();
     vi.mocked(getPlayback).mockReset();
-    vi.mocked(getPlayback).mockResolvedValue({ loop: true, held: false });
+    vi.mocked(getPlayback).mockResolvedValue({ loop: true, held: false, paused: false });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -239,9 +239,9 @@ describe("useCmsSocket", () => {
 
   it("loads the playback state on connect, so a page reload shows the right button", async () => {
     vi.mocked(getIncidents).mockResolvedValue([]);
-    vi.mocked(getPlayback).mockResolvedValue({ loop: false, held: true });
+    vi.mocked(getPlayback).mockResolvedValue({ loop: false, held: true, paused: false });
     const { result } = renderHook(() => useCmsSocket());
     act(() => FakeWebSocket.instances[0].open());
-    await waitFor(() => expect(result.current.state.playback).toEqual({ loop: false, held: true }));
+    await waitFor(() => expect(result.current.state.playback).toEqual({ loop: false, held: true, paused: false }));
   });
 });

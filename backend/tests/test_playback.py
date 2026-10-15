@@ -42,9 +42,9 @@ async def test_control_starts_looping_and_reports_state():
         seen.append(state)
 
     c = PlaybackControl(on_change)
-    assert c.snapshot() == {"loop": True, "held": False}
+    assert c.snapshot() == {"loop": True, "held": False, "paused": False}
     await c.set_loop(False)
-    assert c.snapshot()["loop"] is False and seen[-1] == {"loop": False, "held": False}
+    assert c.snapshot()["loop"] is False and seen[-1] == {"loop": False, "held": False, "paused": False}
 
 
 async def test_held_only_when_every_running_camera_is_held():
@@ -143,5 +143,35 @@ async def test_replay_loop_off_holds_after_one_pass_and_restart_plays_again(came
     await control.restart()
     await until(lambda: control.snapshot()["held"] and len(hub.of_type("detections")) == 60)
     assert {d["loop"] for d in hub.of_type("detections")} == {0, 1}
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+# ---- pause ----------------------------------------------------------------------------------
+async def test_wait_resumed_returns_at_once_when_not_paused_and_reports_the_pause_when_resumed():
+    c = PlaybackControl()
+    assert await c.wait_resumed() == 0.0
+    await c.set_paused(True)
+    assert c.snapshot()["paused"] is True
+    waiter = asyncio.create_task(c.wait_resumed())
+    await asyncio.sleep(0.05)
+    assert not waiter.done()  # frozen
+    await c.set_paused(False)
+    assert await waiter >= 0.04
+
+
+async def test_pause_freezes_the_live_pipeline_and_resume_continues(camera, tmp_path, service, hub):
+    control = PlaybackControl()
+    pipe = make_pipeline(camera, tmp_path, service, hub, ReSource(50, loops=1),
+                         trigger=FakeTrigger(fire_on_call=None), control=control)
+    task = asyncio.create_task(pipe.run())
+    await until(lambda: len(hub.of_type("detections")) >= 2)
+    await control.set_paused(True)
+    await asyncio.sleep(0.05)  # let the frame in flight finish
+    frozen = len(hub.of_type("detections"))
+    await asyncio.sleep(0.2)
+    assert len(hub.of_type("detections")) == frozen  # nothing new while paused
+    await control.set_paused(False)
+    await until(lambda: len(hub.of_type("detections")) > frozen)
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)

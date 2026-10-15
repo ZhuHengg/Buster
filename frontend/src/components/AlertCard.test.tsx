@@ -192,9 +192,22 @@ describe("AlertCard", () => {
     expect(onApprove).not.toHaveBeenCalled();
   });
 
-  it("has no close button while pending, so the operator must decide", () => {
-    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
-    expect(screen.queryByRole("button", { name: /close alert/i })).not.toBeInTheDocument();
+  it("a pending alert can be closed for now with the × button or Escape, without deciding", async () => {
+    const onClose = vi.fn();
+    const onApprove = vi.fn();
+    const onReject = vi.fn();
+    render(<AlertCard incident={makeIncident()} camera={camera} onApprove={onApprove} onReject={onReject} onClose={onClose} busy={false} />);
+    await userEvent.click(screen.getByRole("button", { name: /close alert/i }));
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  it("after approval it offers a link to track the suspect on the live map", () => {
+    const incident = makeIncident({ status: "ESCALATED", escalation: [step("police_call", "ringing")] });
+    render(<AlertCard incident={incident} camera={camera} onApprove={noop} onReject={noop} onClose={noop} busy={false} />);
+    expect(screen.getByRole("link", { name: /track suspect/i })).toHaveAttribute("href", "/trace");
   });
 
   it("after approval the close button and Escape both call onClose", async () => {

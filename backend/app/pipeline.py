@@ -130,6 +130,12 @@ class CameraPipeline:
                     self._close(it)
                     it, offset, fresh = iter(source), (last_loop + 1 if last_loop is not None else 0), True
                     continue
+                paused_for = await control.wait_resumed()
+                if paused_for:  # keep the clip where it was, and tell the browser the new timing
+                    shift = getattr(source, "delay", None)
+                    if shift is not None:
+                        shift(paused_for)
+                    last_sync_sec = None
                 frame, pts, raw_loop = item
                 loop = raw_loop + offset
                 if last_loop is not None and loop != last_loop:
@@ -264,6 +270,10 @@ class ReplayPipeline:
                         generation, restarted = control.generation, True
                         break
                     fd = fd.model_copy(update={"loop": loop})
+                    paused_for = await control.wait_resumed()
+                    if paused_for:
+                        started += paused_for
+                        last_sec = None
                     if self.realtime:
                         delay = started + fd.pts - time.perf_counter()
                         if delay > 0:
