@@ -1,182 +1,230 @@
 "use client";
 
-import { OPERATOR_NAME, TOWNSHIP_NAME } from "@/lib/config";
-import type { CmsState } from "@/lib/ws";
-import type { CameraConfig } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import CameraTile from "./CameraTile";
+import { bestGrid } from "@/lib/layout";
+import type { StreamInfo } from "@/lib/stream";
+import type { CameraConfig } from "@/lib/types";
+import type { CmsState } from "@/lib/ws";
+
+import CameraTile, { type FitMode } from "./CameraTile";
+import Icon from "./Icon";
 import PlaybackControls from "./PlaybackControls";
 
-export function CmsHeader({
-  connected,
-  title,
-  subtitle,
-  children,
+type Layout = "focus" | "auto" | "2x2" | "3x2" | "3x3";
+const FIXED: Record<Exclude<Layout, "auto" | "focus">, { cols: number; rows: number }> = {
+  "2x2": { cols: 2, rows: 2 },
+  "3x2": { cols: 3, rows: 2 },
+  "3x3": { cols: 3, rows: 3 },
+};
+const GAP = 8;
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
 }: {
-  connected?: boolean; // omitted on pages that have no live connection
-  title: string;
-  subtitle?: string;
-  children?: React.ReactNode;
+  label: string;
+  value: T;
+  options: { key: T; text: string; title: string }[];
+  onChange: (v: T) => void;
 }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line px-5 py-3">
-      <div className="min-w-0">
-        <h1 className="truncate text-lg font-semibold text-slate-50">{title}</h1>
-        <div className="truncate text-xs text-muted">{subtitle ?? `${TOWNSHIP_NAME} · Central Monitoring System`}</div>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-        {children}
-        {connected !== undefined && (
-          <span
-            role="status"
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium ${
-              connected ? "border-ok/40 bg-ok/10 text-ok" : "border-accent/50 bg-accent/10 text-red-300"
-            }`}
-          >
-            <span className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "rec-dot bg-accent"}`} />
-            {connected ? "Live" : "Reconnecting"}
-          </span>
-        )}
-        <span className="flex items-center gap-2 rounded-full border border-line bg-panel py-1 pl-1 pr-3 text-slate-200">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-info/20 text-[11px] font-semibold text-info">
-            {OPERATOR_NAME.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-          </span>
-          {OPERATOR_NAME}
-        </span>
-      </div>
-    </header>
-  );
-}
-
-type StatTone = "blue" | "rose" | "mint" | "sand";
-
-const STAT_ICONS: Record<StatTone, React.ReactNode> = {
-  blue: (
-    <>
-      <path d="M23 7l-7 5 7 5V7z" />
-      <rect x="1" y="5" width="15" height="14" rx="2" />
-    </>
-  ),
-  rose: (
-    <>
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-    </>
-  ),
-  mint: (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="M9 12l2 2 4-4" />
-    </>
-  ),
-  sand: (
-    <>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M15 9l-6 6M9 9l6 6" />
-    </>
-  ),
-};
-
-function StatTile({
-  tone,
-  value,
-  label,
-  hint,
-  onClick,
-}: {
-  tone: StatTone;
-  value: string;
-  label: string;
-  hint: string;
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <span className="stat-chip" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          {STAT_ICONS[tone]}
-        </svg>
-      </span>
-      <div className="relative min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold leading-tight">{label}</div>
-        <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-tight opacity-70">
-          {hint}
-          {onClick && <span aria-hidden="true">→</span>}
-        </div>
-      </div>
-      <div className="stat-value relative text-3xl font-bold leading-none">{value}</div>
-      {onClick && <span className="stat-ping" aria-hidden="true" />}
-    </>
-  );
-  const cls = `stat-card stat-${tone}`;
-  return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} stat-action`}>
-      {body}
-    </button>
-  ) : (
-    <div className={cls}>{body}</div>
+    <div role="group" aria-label={label} className="flex overflow-hidden rounded-[var(--r-md)] border border-line-strong bg-panel">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          aria-pressed={value === o.key}
+          title={o.title}
+          onClick={() => onChange(o.key)}
+          className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+            value === o.key ? "bg-brand text-white" : "text-ink hover:bg-panel2"
+          }`}
+        >
+          {o.text}
+        </button>
+      ))}
+    </div>
   );
 }
 
 export interface CameraGridProps {
   cameras: CameraConfig[];
   state: CmsState;
-  connected: boolean;
-  pendingCount?: number;
-  onReview?: () => void; // reopen the alert panel after it was closed
+  streams: Record<string, StreamInfo>;
+  /** camera of the alert being reviewed; defaults to the oldest pending alert's camera */
+  alertCameraId?: string;
+  onStream: (id: string, info: StreamInfo | null) => void;
 }
 
-export default function CameraGrid({ cameras, state, connected, pendingCount = 0, onReview }: CameraGridProps) {
-  const alertCamera = state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined;
-  const incidents = Object.values(state.incidents);
-  const online = cameras.filter((c) => c.clip !== null).length;
-  const escalated = incidents.filter((i) => i.status === "ESCALATED" || i.status === "APPROVED").length;
-  const dismissed = incidents.filter((i) => i.status === "REJECTED" || i.status === "AI_REJECTED").length;
+/** The monitoring workspace: layout controls plus the grid (or one enlarged camera with a filmstrip). */
+export default function CameraGrid({ cameras, state, streams, alertCameraId, onStream }: CameraGridProps) {
+  const alertCamera = alertCameraId ?? (state.activeAlertId ? state.incidents[state.activeAlertId]?.camera_id : undefined);
+  const [layout, setLayout] = useState<Layout>("focus");
+  const [fit, setFit] = useState<FitMode>("contain");
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const wellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = wellRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // the default "Focus" layout enlarges the alerting camera, else the first live one, else the first camera
+  const defaultFocus =
+    layout === "focus"
+      ? (cameras.find((c) => c.id === alertCamera)?.id ??
+        cameras.find((c) => streams[c.id]?.state === "LIVE")?.id ??
+        cameras[0]?.id ??
+        null)
+      : null;
+  const chosen = focusId && cameras.some((c) => c.id === focusId) ? focusId : null;
+  const focus = chosen ?? defaultFocus;
+  const toggleFocus = (id: string) => {
+    if (id === focus) {
+      setFocusId(null);
+      setLayout("auto");
+    } else setFocusId(id);
+  };
+
+  // typical footage shape drives the automatic layout: portrait feeds get more, narrower columns
+  const aspect = useMemo(() => {
+    const a = cameras.flatMap((c) => (c.sync && c.sync.height > 0 ? [c.sync.width / c.sync.height] : []));
+    return a.length ? a.reduce((s, x) => s + x, 0) / a.length : 16 / 9;
+  }, [cameras]);
+
+  const grid = layout === "auto" || layout === "focus" ? bestGrid(cameras.length, box.w, box.h, aspect, GAP) : FIXED[layout];
+  const pageSize = grid.cols * grid.rows;
+  const pages = Math.max(1, Math.ceil(cameras.length / pageSize));
+  const cur = Math.min(page, pages - 1);
+
+  const others = focus ? cameras.filter((c) => c.id !== focus).length : 0;
+  const containerStyle: React.CSSProperties = focus
+    ? {
+        gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 27%)",
+        gridTemplateRows: `repeat(${Math.max(others, 1)}, minmax(96px, 1fr))`,
+      }
+    : {
+        gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`,
+      };
+
+  let slot = 0; // position among the tiles that are not the focused one
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <CmsHeader
-        connected={connected}
-        title="Live monitoring"
-        subtitle={`${online} of ${cameras.length} cameras online · ${TOWNSHIP_NAME}`}
-      >
-        <PlaybackControls playback={state.playback} />
-        {pendingCount > 0 && onReview && (
-          <button
-            type="button"
-            onClick={onReview}
-            className="rounded-full border border-accent/60 bg-accent/15 px-3 py-1 font-semibold text-red-200 transition hover:bg-accent/25"
-          >
-            Review {pendingCount} {pendingCount === 1 ? "alert" : "alerts"}
-          </button>
-        )}
-      </CmsHeader>
-      <div className="grid shrink-0 grid-cols-2 gap-3 px-4 pt-4 lg:grid-cols-4">
-        <StatTile tone="blue" value={`${online}/${cameras.length}`} label="Cameras online" hint="Feeds streaming now" />
-        <StatTile
-          tone="rose"
-          value={String(pendingCount)}
-          label="Awaiting your review"
-          hint={pendingCount > 0 ? "Click to open" : "Nothing waiting"}
-          onClick={pendingCount > 0 ? onReview : undefined}
-        />
-        <StatTile tone="mint" value={String(escalated)} label="Escalated to police" hint="Approved by an operator" />
-        <StatTile tone="sand" value={String(dismissed)} label="Dismissed" hint="False alarms rejected" />
-      </div>
-      <main
-        className="grid min-h-0 flex-1 grid-cols-3 gap-3 p-4"
-        style={{ gridTemplateRows: `repeat(${Math.ceil(cameras.length / 3)}, minmax(0, 1fr))` }}
-      >
-        {cameras.map((camera) => (
-          <CameraTile
-            key={camera.id}
-            camera={camera}
-            detections={state.detections[camera.id] ?? []}
-            sync={state.sync[camera.id]}
-            alerting={camera.id === alertCamera}
-            playback={state.playback}
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2">
+          <Segmented
+            label="Grid layout"
+            value={layout}
+            onChange={(v) => {
+              setLayout(v);
+              setFocusId(null);
+              setPage(0);
+            }}
+            options={[
+              { key: "focus", text: "Focus", title: "One large camera with the others in a column" },
+              { key: "auto", text: "Auto", title: "Choose the layout that gives the footage the most space" },
+              { key: "2x2", text: "2 × 2", title: "Four cameras per page" },
+              { key: "3x2", text: "3 × 2", title: "Six cameras per page" },
+              { key: "3x3", text: "3 × 3", title: "Nine cameras per page" },
+            ]}
           />
-        ))}
-      </main>
+          <Segmented
+            label="Picture fit"
+            value={fit}
+            onChange={setFit}
+            options={[
+              { key: "contain", text: "Fit", title: "Show the whole picture; unused space stays black" },
+              { key: "cover", text: "Fill", title: "Fill the tile; the edges of the picture are cropped" },
+            ]}
+          />
+          {focus && (
+            <button
+              type="button"
+              onClick={() => {
+                setFocusId(null);
+                setLayout("auto");
+              }}
+              className="flex items-center gap-1.5 rounded-[var(--r-md)] border border-line-strong bg-panel px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-panel2"
+            >
+              <Icon name="grid" size={14} />
+              Back to grid
+            </button>
+          )}
+          {!focus && pages > 1 && (
+            <div className="flex items-center gap-1 text-xs text-ink" role="group" aria-label="Camera pages">
+              <button
+                type="button"
+                aria-label="Previous page of cameras"
+                disabled={cur === 0}
+                onClick={() => setPage(cur - 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[var(--r-md)] border border-line-strong bg-panel hover:bg-panel2 disabled:opacity-40"
+              >
+                <Icon name="chevronLeft" size={14} />
+              </button>
+              <span className="mono-time min-w-12 text-center">
+                {cur + 1} / {pages}
+              </span>
+              <button
+                type="button"
+                aria-label="Next page of cameras"
+                disabled={cur >= pages - 1}
+                onClick={() => setPage(cur + 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[var(--r-md)] border border-line-strong bg-panel hover:bg-panel2 disabled:opacity-40"
+              >
+                <Icon name="chevronRight" size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="ml-auto">
+          <PlaybackControls playback={state.playback} cameraCount={cameras.length} />
+        </div>
+      </div>
+
+      <div ref={wellRef} className="min-h-0 flex-1">
+        <div className={`grid h-full ${focus ? "overflow-y-auto" : ""}`} style={{ ...containerStyle, gap: GAP }}>
+          {cameras.map((camera, index) => {
+            const isFocus = camera.id === focus;
+            const style: React.CSSProperties = {};
+            if (focus) {
+              if (isFocus) {
+                style.gridColumn = 1;
+                style.gridRow = `1 / span ${Math.max(others, 1)}`;
+              } else {
+                style.gridColumn = 2;
+                style.gridRow = ++slot;
+              }
+            } else if (Math.floor(index / pageSize) !== cur) {
+              style.display = "none"; // off-page tiles stay mounted so their stream health keeps being measured
+            }
+            return (
+              <div key={camera.id} style={style} className="flex min-h-0 min-w-0 flex-col">
+                <CameraTile
+                  camera={camera}
+                  detections={state.detections[camera.id] ?? []}
+                  sync={state.sync[camera.id]}
+                  alerting={camera.id === alertCamera}
+                  playback={state.playback}
+                  fit={fit}
+                  focused={isFocus}
+                  compact={!!focus && !isFocus}
+                  onToggleFocus={toggleFocus}
+                  onStream={onStream}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

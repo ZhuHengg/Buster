@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { seconds, STATUS_CHIP, STATUS_LABEL, STATUS_ORDER } from "@/lib/status";
+import { seconds, STATUS_CHIP, STATUS_FILTER, STATUS_LABEL, STATUS_ORDER } from "@/lib/status";
 import type { Incident, IncidentStatus } from "@/lib/types";
 
 export interface IncidentTableProps {
@@ -43,9 +43,10 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
     return c;
   }, [incidents]);
   const rows = filter === "ALL" ? sorted : sorted.filter((i) => i.status === filter);
+  // statuses with no incidents are left out (the selected one stays so it can be switched off)
   const filters: { key: Filter; label: string }[] = [
     { key: "ALL", label: "All" },
-    ...STATUS_ORDER.map((s) => ({ key: s as Filter, label: STATUS_LABEL[s] })),
+    ...STATUS_ORDER.filter((s) => (counts.get(s) ?? 0) > 0 || s === filter).map((s) => ({ key: s as Filter, label: STATUS_LABEL[s] })),
   ];
 
   return (
@@ -57,10 +58,14 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
             type="button"
             aria-pressed={filter === key}
             onClick={() => setFilter(key)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-              filter === key
-                ? "border-slate-300 bg-slate-100 text-slate-900"
-                : "border-line bg-panel2 text-slate-300 hover:border-slate-500"
+            className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition ${
+              key === "ALL"
+                ? filter === key
+                  ? "border-ink bg-white/15 text-ink"
+                  : "border-transparent bg-white/10 text-muted hover:brightness-125"
+                : filter === key
+                  ? STATUS_FILTER[key].active
+                  : STATUS_FILTER[key].idle
             }`}
           >
             {label} <span className="mono-time opacity-70">{counts.get(key) ?? 0}</span>
@@ -68,7 +73,7 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
         ))}
       </div>
 
-      <div className="min-h-0 overflow-auto rounded-xl border border-line">
+      <div className="min-h-0 overflow-auto rounded-md border border-line">
         <table className="w-full min-w-[860px] border-collapse text-left text-sm">
           <thead className="sticky top-0 bg-panel text-xs uppercase tracking-wide text-muted">
             <tr>
@@ -104,10 +109,10 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
                   onClick={() => onSelect?.(i)}
                   onKeyDown={(e) => e.key === "Enter" && onSelect?.(i)}
                   className={`cursor-pointer border-b border-line/60 outline-none transition hover:bg-white/5 focus-visible:bg-white/5 ${
-                    selected ? "bg-white/10" : ""
+                    selected ? "bg-white/5" : ""
                   }`}
                 >
-                  <td className="mono-time whitespace-nowrap px-3 py-2 text-slate-300">
+                  <td className="mono-time whitespace-nowrap px-3 py-2 text-muted">
                     {new Date(i.created_at).toLocaleTimeString("en-GB", { hour12: false })}
                   </td>
                   <td className="mono-time whitespace-nowrap px-3 py-2">{i.id}</td>
@@ -117,9 +122,9 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
                     <StatusChip status={i.status} />
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">{i.operator ?? "—"}</td>
-                  <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.candidate_s)}</td>
-                  <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.verified_s)}</td>
-                  <td className="mono-time px-3 py-2 text-slate-300">{seconds(i.metrics.call_placed_s)}</td>
+                  <td className="mono-time px-3 py-2 text-muted">{seconds(i.metrics.candidate_s)}</td>
+                  <td className="mono-time px-3 py-2 text-muted">{seconds(i.metrics.verified_s)}</td>
+                  <td className="mono-time px-3 py-2 text-muted">{seconds(i.metrics.call_placed_s)}</td>
                   {onRemove && (
                     <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       {confirmId === i.id ? (
@@ -127,7 +132,7 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
                           <button
                             type="button"
                             aria-label={`Confirm remove ${i.id}`}
-                            className="rounded border border-accent/70 bg-accent/15 px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-accent/30"
+                            className="rounded border border-accent/70 bg-accent/15 px-2 py-0.5 text-xs font-medium text-brand-soft hover:bg-accent/30"
                             onClick={() => {
                               setConfirmId(null);
                               onRemove(i);
@@ -137,7 +142,7 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
                           </button>
                           <button
                             type="button"
-                            className="rounded border border-line px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
+                            className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-line-strong"
                             onClick={() => setConfirmId(null)}
                           >
                             Cancel
@@ -148,7 +153,7 @@ export default function IncidentTable({ incidents, selectedId, onSelect, onRemov
                           type="button"
                           aria-label={`Remove ${i.id}`}
                           title="Remove from the log"
-                          className="rounded px-1.5 py-0.5 text-base leading-none text-muted hover:bg-white/10 hover:text-red-300"
+                          className="rounded px-1.5 py-0.5 text-base leading-none text-muted hover:bg-white/5 hover:text-brand-soft"
                           onClick={() => setConfirmId(i.id)}
                         >
                           ×

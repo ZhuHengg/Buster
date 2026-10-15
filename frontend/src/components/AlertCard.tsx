@@ -13,8 +13,10 @@ export interface AlertCardProps {
   camera: CameraConfig | undefined;
   onApprove: () => void;
   onReject: () => void;
+  onNext?: () => void; // skip to the next waiting alert without deciding this one
   onClose: () => void; // hides the panel; a pending alert stays pending and can be reopened
   busy: boolean;
+  position?: { index: number; total: number }; // this alert's place among the undecided ones
   queueCount?: number; // other alerts still waiting behind this one
 }
 
@@ -36,7 +38,7 @@ function formatElapsed(total: number): string {
 
 function Kbd({ children }: { children: string }) {
   return (
-    <kbd aria-hidden className="ml-2 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[11px] font-normal">
+    <kbd aria-hidden className="ml-2 rounded border border-white/60 px-1.5 py-0.5 font-mono text-[11px] font-normal">
       {children}
     </kbd>
   );
@@ -46,7 +48,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="grid grid-cols-[92px_1fr] gap-3 border-b border-line/70 py-1.5 text-sm last:border-b-0">
       <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="text-slate-100">{children}</dd>
+      <dd className="text-ink">{children}</dd>
     </div>
   );
 }
@@ -56,8 +58,10 @@ export default function AlertCard({
   camera,
   onApprove,
   onReject,
+  onNext,
   onClose,
   busy,
+  position,
   queueCount = 0,
 }: AlertCardProps) {
   const v = incident.verification;
@@ -77,12 +81,14 @@ export default function AlertCard({
     acted.current = true;
     fn();
   };
+  const canSkip = pending && queueCount > 0 && !!onNext;
   const keysRef = useRef({
     approve: () => undefined as void,
     reject: () => undefined as void,
+    next: () => undefined as void,
   });
   useEffect(() => {
-    keysRef.current = { approve: act(onApprove), reject: act(onReject) };
+    keysRef.current = { approve: act(onApprove), reject: act(onReject), next: () => canSkip && !busy && onNext?.() };
   });
 
   // the panel is not modal (the cameras stay usable), so move focus into it rather than trapping it.
@@ -102,6 +108,7 @@ export default function AlertCard({
         const k = e.key.toLowerCase();
         if (k === "a") keysRef.current.approve();
         else if (k === "r") keysRef.current.reject();
+        else if (k === "n") keysRef.current.next();
         else if (k === "escape") onClose();
       };
       window.addEventListener("keydown", onKey);
@@ -138,7 +145,7 @@ export default function AlertCard({
       ref={panelRef}
       tabIndex={-1}
       aria-label="Security alert"
-      className="card-in flex h-full w-[460px] max-w-[45vw] shrink-0 flex-col border-l-2 border-accent bg-panel shadow-2xl"
+      className="card-in m-3 ml-0 flex w-[420px] max-w-[45vw] shrink-0 flex-col self-stretch overflow-hidden rounded-[var(--r-lg)] border border-line bg-panel shadow-2xl"
     >
       {pending && (
         <div role="alert" className="sr-only">
@@ -148,15 +155,15 @@ export default function AlertCard({
       )}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3">
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-soft">
             {pending ? "Security alert" : "Escalating"}
           </div>
-          <div className="text-lg font-semibold text-slate-50">
+          <div className="text-lg font-semibold text-ink">
             {v ? cap(v.incident_type.replace("_", " ")) : "Suspected snatch theft"}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted">
             <span>
-              Detected <span className="mono-time text-slate-200">{formatElapsed(elapsed)}</span> ago
+              Detected <span className="mono-time text-ink">{formatElapsed(elapsed)}</span> ago
             </span>
             {pending && queueCount > 0 && (
               <span className="rounded border border-warn/60 bg-warn/10 px-1.5 py-0.5 font-medium text-warn">
@@ -173,7 +180,7 @@ export default function AlertCard({
             onClick={onClose}
             aria-label="Close alert"
             title={pending ? "Close for now (Esc). The alert stays pending: reopen it with Review alerts" : "Close (Esc)"}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-lg leading-none text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-lg leading-none text-muted transition hover:bg-white/5 hover:text-white"
           >
             ×
           </button>
@@ -188,7 +195,7 @@ export default function AlertCard({
           <EscalationTimeline compact steps={incident.escalation} gateLabel={gateLabel} />
           <Link
             href="/trace"
-            className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-info/15 px-3 py-2 text-sm font-semibold text-info transition hover:bg-info/25"
+            className="mt-3 flex items-center justify-center gap-2 rounded-md bg-info/15 px-3 py-2 text-sm font-semibold text-info transition hover:bg-info/25"
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z" />
@@ -201,7 +208,7 @@ export default function AlertCard({
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
         {!v && (
-          <div className="rounded-xl border border-warn/60 bg-warn/10 px-3 py-2 text-sm font-medium text-warn">
+          <div className="rounded-md border border-warn/60 bg-warn/10 px-3 py-2 text-sm font-medium text-warn">
             AI verification unavailable: operator to confirm
           </div>
         )}
@@ -209,7 +216,7 @@ export default function AlertCard({
         <video
           key={incident.id}
           src={clipUrl(incident.clip_file, incident.clip_start, incident.clip_end)}
-          className="aspect-video w-full rounded-xl border border-line bg-black object-contain"
+          className="aspect-video w-full rounded-md border border-line bg-black object-contain"
           muted
           autoPlay
           playsInline
@@ -233,18 +240,18 @@ export default function AlertCard({
                   key={file}
                   src={snapshotUrl(file)}
                   alt={`Suspect snapshot ${i + 1}`}
-                  className="h-24 rounded-xl border border-line bg-black object-contain"
+                  className="h-24 rounded-md border border-line bg-black object-contain"
                 />
               ))}
             </div>
           </div>
         )}
 
-        <p className="text-sm leading-relaxed text-slate-100">
+        <p className="text-sm leading-relaxed text-ink">
           {v ? v.summary : "A motorcycle snatch theft was flagged by the detector. Review the clip and confirm."}
         </p>
 
-        <dl className="rounded-xl border border-line bg-panel2 px-3 py-1">
+        <dl className="rounded-md border border-line bg-panel2 px-3 py-1">
           <Row label="Camera">
             {incident.camera_id}
             {camera ? ` · ${camera.name}` : ""}
@@ -262,14 +269,14 @@ export default function AlertCard({
       </div>
 
       {pending && (
-        <footer className="shrink-0 border-t border-line bg-panel px-5 py-3 shadow-[0_-8px_16px_rgba(0,0,0,0.35)]">
+        <footer className="shrink-0 border-t border-line bg-panel px-5 py-3 shadow-[0_-4px_12px_rgba(16,24,40,0.08)]">
           <div className="flex flex-col gap-2">
             <button
               type="button"
               onClick={act(onApprove)}
               disabled={busy}
               aria-keyshortcuts="A"
-              className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-accent px-4 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve &amp; escalate
               <Kbd>A</Kbd>
@@ -279,11 +286,32 @@ export default function AlertCard({
               onClick={act(onReject)}
               disabled={busy}
               aria-keyshortcuts="R"
-              className="rounded-xl border border-slate-500 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full border border-line-strong px-4 py-2.5 text-sm font-medium text-ink transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Reject (false positive)
               <Kbd>R</Kbd>
             </button>
+            {canSkip && (
+              <button
+                type="button"
+                onClick={onNext}
+                disabled={busy}
+                aria-keyshortcuts="N"
+                title="Skip this alert for now and review the next one. This one stays pending."
+                className="flex cursor-pointer items-center justify-center gap-2 rounded-full border border-line px-4 py-2.5 text-sm font-medium text-ink transition hover:border-line-strong hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next alert
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 5l7 7-7 7" />
+                </svg>
+                {position && (
+                  <span className="mono-time rounded-full bg-white/10 px-2 py-0.5 text-xs leading-none text-muted">
+                    {position.index} / {position.total}
+                  </span>
+                )}
+                <Kbd>N</Kbd>
+              </button>
+            )}
           </div>
         </footer>
       )}

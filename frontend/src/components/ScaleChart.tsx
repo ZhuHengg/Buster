@@ -20,9 +20,17 @@ export default function ScaleChart({ report }: { report: ScaleReport }) {
   const stopped = plotted.find((r) => !r.ok);
   const ticks = [0, maxY / 2, maxY].map((v) => Math.round(v));
   const path = plotted.map((r, i) => `${i === 0 ? "M" : "L"}${x(r.n).toFixed(1)},${y(r.fps_mean).toFixed(1)}`).join(" ");
+  const baseY = y(0);
+  const area = plotted.length > 1 ? `${path} L${x(plotted[plotted.length - 1].n).toFixed(1)},${baseY} L${x(plotted[0].n).toFixed(1)},${baseY} Z` : "";
   return (
     <figure className="flex flex-col gap-2">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Mean analysis fps per camera against number of cameras" className="w-full">
+        <defs>
+          <linearGradient id="scale-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#ff8a3d" stopOpacity="0.38" />
+            <stop offset="1" stopColor="#ff8a3d" stopOpacity="0" />
+          </linearGradient>
+        </defs>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} />
@@ -51,7 +59,8 @@ export default function ScaleChart({ report }: { report: ScaleReport }) {
         <text x={W - M.r} y={y(report.target_fps) - 5} textAnchor="end" fontSize={11} fill="var(--muted)">
           {`target ${report.target_fps} fps`}
         </text>
-        {path && <path d={path} fill="none" stroke="var(--series-1)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+        {area && <path d={area} fill="url(#scale-area)" className="area-in" />}
+        {path && <path d={path} pathLength={1} className="line-draw chart-glow" fill="none" stroke="var(--series-1)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
         {plotted.map((r) => (
           <circle
             key={r.n}
@@ -61,10 +70,13 @@ export default function ScaleChart({ report }: { report: ScaleReport }) {
             fill={r.ok ? "var(--series-1)" : CRITICAL}
             stroke="var(--panel)"
             strokeWidth={2}
+            className="dot-in pt"
+            style={{ animationDelay: `${300 + r.n * 110}ms` }}
           >
             <title>{`${r.n} cameras: ${r.fps_mean.toFixed(1)} fps mean, ${r.fps_min?.toFixed(1)} min, p90 lag ${r.lag_p90_s?.toFixed(2)} s, ${r.gpu_mem_gb?.toFixed(1)} GB GPU`}</title>
           </circle>
         ))}
+        {lastOk && <circle cx={x(lastOk.n)} cy={y(lastOk.fps_mean)} r={6} fill="none" stroke="var(--series-1)" strokeWidth={2} className="ring-ping" />}
         {lastOk && (
           <text x={x(lastOk.n)} y={y(lastOk.fps_mean) + 24} textAnchor={anchor(lastOk.n)} fontSize={12} fontWeight={600} fill="var(--text)">
             {`${lastOk.n} ${lastOk.n === 1 ? "camera" : "cameras"} OK`}

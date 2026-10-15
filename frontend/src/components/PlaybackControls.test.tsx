@@ -32,8 +32,18 @@ describe("PlaybackControls", () => {
 
   it("Restart plays the clips again from the start", async () => {
     render(<PlaybackControls playback={playing} />);
-    await userEvent.click(screen.getByRole("button", { name: /restart/i }));
+    await userEvent.click(screen.getByRole("button", { name: /restart all clips/i }));
+    expect(restartPlayback).not.toHaveBeenCalled(); // needs confirmation first
+    await userEvent.click(screen.getByRole("button", { name: /^restart clips$/i }));
     expect(restartPlayback).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cancel in the restart confirmation leaves the clips alone", async () => {
+    render(<PlaybackControls playback={playing} />);
+    await userEvent.click(screen.getByRole("button", { name: /restart all clips/i }));
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(restartPlayback).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("shows an error instead of failing silently when the backend cannot be reached", async () => {

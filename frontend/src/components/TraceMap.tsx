@@ -18,9 +18,9 @@ import {
   revealDelayMs,
 } from "@/lib/trace";
 import type { Incident } from "@/lib/types";
-import { useCmsSocket } from "@/lib/ws";
+import { useCms } from "@/lib/cms";
 
-import { CmsHeader } from "./CameraGrid";
+import { PageHeader } from "./PageHeader";
 
 const clock = (base: number, offsetS: number) =>
   new Date(base + offsetS * 1000).toLocaleTimeString("en-GB", { hour12: false });
@@ -47,7 +47,7 @@ function Suspect({ src, className }: { src: string | null; className: string }) 
 }
 
 export default function TraceMap() {
-  const { state, connected } = useCmsSocket();
+  const { state } = useCms();
   const [revealed, setRevealed] = useState(0); // how many sightings are on the map
   const [run, setRun] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
@@ -200,31 +200,30 @@ export default function TraceMap() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CmsHeader
-        connected={connected}
+      <PageHeader
         title="Live trace"
         subtitle={done ? "Suspect located · police have been given the last known position" : "Following the suspect across nearby cameras"}
       />
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="relative min-h-[360px] overflow-hidden rounded-xl border border-line bg-panel">
+        <section className="relative min-h-[360px] overflow-hidden rounded-md border border-line bg-panel">
           <div ref={mapEl} className="absolute inset-0" />
         </section>
 
-        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-line bg-panel p-4">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-md border border-line bg-panel p-4">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-soft">
               {done ? "Suspect located" : "Tracing suspect"}
             </div>
-            <div className="text-lg font-semibold text-slate-50">Snatch theft · {incident?.id ?? "CAM-07 demo"}</div>
+            <div className="text-lg font-semibold text-ink">Snatch theft · {incident?.id ?? "CAM-07 demo"}</div>
             <div className="text-xs text-muted">Police notified · units heading to {last.label}</div>
           </div>
 
-          <div className="flex gap-3 rounded-xl border border-line bg-panel2 p-3">
-            <Suspect src={photo} className="h-28 w-24 shrink-0 rounded-xl border border-line" />
+          <div className="flex gap-3 rounded-md border border-line bg-panel2 p-3">
+            <Suspect src={photo} className="h-28 w-24 shrink-0 rounded-md border border-line" />
             <dl className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
               <dt className="text-xs uppercase tracking-wide text-muted">{shownIdx === lastIdx ? "Last seen" : "Seen at"}</dt>
-              <dd className="font-medium text-slate-50">
+              <dd className="font-medium text-ink">
                 {revealed > 0 ? `${shown.cameraId} · ${shown.label}` : "Locating…"}
               </dd>
               {revealed > 0 && (
@@ -233,7 +232,7 @@ export default function TraceMap() {
                     {clock(base, shown.offsetS)}
                     {shownIdx === lastIdx && ` · ${lastSeenAgo}s ago`}
                   </dd>
-                  <dd className="text-xs text-slate-200">{shown.note}</dd>
+                  <dd className="text-xs text-ink">{shown.note}</dd>
                   <dd className="mono-time text-xs text-ok">Match {Math.round(shown.match * 100)}%</dd>
                 </>
               )}
@@ -254,7 +253,7 @@ export default function TraceMap() {
                     }`}
                   >
                     <span className={`h-2.5 w-2.5 rounded-full ${on ? (i === lastIdx ? "bg-accent" : "bg-warn") : "bg-slate-600"}`} />
-                    <span className="min-w-0 truncate text-slate-100">
+                    <span className="min-w-0 truncate text-ink">
                       {s.cameraId} · {s.label}
                     </span>
                     <span className="mono-time text-xs text-muted">{on ? `T+${s.offsetS}s` : "…"}</span>
@@ -267,7 +266,7 @@ export default function TraceMap() {
           <button
             type="button"
             onClick={replay}
-            className="mt-auto rounded-xl border border-slate-500 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5"
+            className="mt-auto rounded-md border border-line-strong px-3 py-2 text-sm text-ink transition hover:bg-white/5"
           >
             Replay trace
           </button>

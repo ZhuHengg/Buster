@@ -7,9 +7,15 @@ export interface FitTransform {
 }
 
 /** Where a frame of frameW x frameH lands inside a boxW x boxH element with `object-fit: contain`. */
-export function fitTransform(frameW: number, frameH: number, boxW: number, boxH: number): FitTransform {
+export function fitTransform(
+  frameW: number,
+  frameH: number,
+  boxW: number,
+  boxH: number,
+  mode: "contain" | "cover" = "contain",
+): FitTransform {
   if (frameW <= 0 || frameH <= 0 || boxW <= 0 || boxH <= 0) return { scale: 0, offsetX: 0, offsetY: 0 };
-  const scale = Math.min(boxW / frameW, boxH / frameH);
+  const scale = mode === "cover" ? Math.max(boxW / frameW, boxH / frameH) : Math.min(boxW / frameW, boxH / frameH);
   return { scale, offsetX: (boxW - frameW * scale) / 2, offsetY: (boxH - frameH * scale) / 2 };
 }
 

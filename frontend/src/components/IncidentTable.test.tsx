@@ -105,9 +105,20 @@ describe("IncidentTable", () => {
     const { unmount } = render(<IncidentTable incidents={[]} />);
     expect(screen.getByText(/No incidents/)).toBeInTheDocument();
     unmount();
-    render(<IncidentTable incidents={sample} />);
-    await userEvent.click(screen.getByRole("button", { name: /Pending review/ }));
+    const { rerender } = render(<IncidentTable incidents={sample} />);
+    await userEvent.click(screen.getByRole("button", { name: /^Escalated/ }));
+    rerender(<IncidentTable incidents={sample.filter((i) => i.status !== "ESCALATED")} />);
     expect(screen.getByText(/No incidents/)).toBeInTheDocument();
+    // the selected filter stays on screen so it can be switched off
+    expect(screen.getByRole("button", { name: /^Escalated/ })).toBeInTheDocument();
+  });
+
+  it("leaves out status filters that have no incidents", () => {
+    render(<IncidentTable incidents={sample} />);
+    expect(screen.getByRole("button", { name: /^Escalated/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Pending review/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Approved/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Candidate/ })).not.toBeInTheDocument();
   });
 
   describe("removing a log entry", () => {

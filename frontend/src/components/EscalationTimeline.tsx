@@ -28,7 +28,7 @@ function Node({ status }: { status: Status | "waiting" }) {
       : active
         ? "border-warn bg-warn/20 text-warn"
         : status === "queued"
-          ? "border-slate-400 bg-panel text-slate-300"
+          ? "border-line-strong bg-panel text-muted"
           : "border-line bg-panel text-muted";
   return (
     // key on status: the node pops each time the step changes state
@@ -93,11 +93,11 @@ export default function EscalationTimeline({
           <li key={channel} title={step?.detail ?? undefined} className="relative flex min-w-0 flex-col items-center gap-1.5 px-1 text-center">
             <Node status={status} />
             {i < rows.length - 1 && <Track status={status} />}
-            <span className={`${compact ? "text-xs" : "text-sm"} w-full truncate font-medium text-slate-100`}>{label}</span>
+            <span className={`${compact ? "text-xs" : "text-sm"} w-full truncate font-medium text-ink`}>{label}</span>
             <span
               key={status}
               className={`fade-up text-[11px] font-medium ${
-                status === "failed" ? "text-accent" : DONE.includes(status as Status) ? "text-ok" : step ? "text-slate-200" : "text-muted"
+                status === "failed" ? "text-brand-soft" : DONE.includes(status as Status) ? "text-ok" : step ? "text-ink" : "text-muted"
               }`}
             >
               {step ? STATUS_TEXT[step.status] : "Waiting"}

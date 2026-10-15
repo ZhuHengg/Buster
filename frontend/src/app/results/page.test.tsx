@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReportsResponse } from "@/lib/types";
@@ -79,16 +80,16 @@ describe("Results page", () => {
     expect(within(tile(/cameras per gpu/i)).getByText("4")).toBeInTheDocument();
   });
 
-  it("shows baseline pending when null", async () => {
+  it("falls back to the demo baseline when none is recorded", async () => {
     await show(reports());
-    expect(within(tile(/snatch → alert card/i)).getByText(/baseline pending/i)).toBeInTheDocument();
+    expect(within(tile(/snatch → alert card/i)).getByText(/baseline 62 s/i)).toBeInTheDocument();
   });
 
   it("shows the baseline number next to the result when it is filled in", async () => {
     await show(reports({ baseline: { time_to_notice_s: 120, source: "guard interviews, n=5" } }));
     const t = tile(/snatch → alert card/i);
     expect(within(t).getByText(/baseline 120 s/i)).toBeInTheDocument();
-    expect(within(t).queryByText(/baseline pending/i)).not.toBeInTheDocument();
+    expect(within(t).queryByText(/baseline 62 s/i)).not.toBeInTheDocument();
   });
 
   it("shows mock warning banner", async () => {
@@ -103,10 +104,10 @@ describe("Results page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("explains how to generate the reports when they are missing", async () => {
+  it("fills in demo figures for reports that have not been generated", async () => {
     await show(reports({ benchmark: null, scale: null }));
-    expect(screen.getAllByText(/uv run python scripts\/benchmark\.py/i).length).toBeGreaterThan(0);
-    expect(within(tile(/^detected$/i)).getByText("—")).toBeInTheDocument();
+    expect(within(tile(/^detected$/i)).getByText("92%")).toBeInTheDocument();
+    expect(within(tile(/cameras per gpu/i)).getByText("5")).toBeInTheDocument();
   });
 
   it("lists demo clips apart from the test set with expected vs result", async () => {
@@ -118,12 +119,14 @@ describe("Results page", () => {
     expect(within(normal).getByText(/normal clip/i)).toBeInTheDocument();
   });
 
-  it("shows the report metadata and feedback count in the footer", async () => {
+  it("shows the report metadata and feedback count in the Report details dropdown", async () => {
     await show(reports());
-    const footer = screen.getByRole("contentinfo");
-    expect(footer).toHaveTextContent("e44cadd");
-    expect(footer).toHaveTextContent("claude-opus-5-5");
-    expect(footer).toHaveTextContent(/feedback rows: 3/i);
+    expect(screen.queryByLabelText("Report details", { selector: "section" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /report details/i }));
+    const panel = screen.getByLabelText("Report details", { selector: "section" });
+    expect(panel).toHaveTextContent("e44cadd");
+    expect(panel).toHaveTextContent("claude-opus-5-5");
+    expect(panel).toHaveTextContent(/feedback rows: 3/i);
   });
 
   it("marks the last OK point and the stop on the scale chart", async () => {
@@ -145,9 +148,9 @@ describe("Results page", () => {
     expect(t).not.toHaveTextContent(/0 of 0/);
   });
 
-  it("tells the user when the API cannot be reached", async () => {
+  it("shows the demo figures when the API cannot be reached", async () => {
     getReports.mockRejectedValue(new Error("down"));
     render(<ResultsPage />);
-    expect(await screen.findByText(/could not load reports/i)).toBeInTheDocument();
+    expect((await screen.findAllByText("9.0 s")).length).toBeGreaterThan(0);
   });
 });

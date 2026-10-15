@@ -3,89 +3,58 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const ICON = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+import { useCms } from "@/lib/cms";
 
-const NAV = [
-  {
-    href: "/",
-    label: "Live",
-    hint: "Live monitoring: all cameras and alerts",
-    icon: (
-      <svg viewBox="0 0 24 24" {...ICON} aria-hidden>
-        <rect x="3" y="3" width="7.5" height="7.5" rx="2" />
-        <rect x="13.5" y="3" width="7.5" height="7.5" rx="2" />
-        <rect x="3" y="13.5" width="7.5" height="7.5" rx="2" />
-        <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" />
-      </svg>
-    ),
-  },
-  {
-    href: "/trace",
-    label: "Trace",
-    hint: "Live trace: follow a suspect on the map",
-    icon: (
-      <svg viewBox="0 0 24 24" {...ICON} aria-hidden>
-        <path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z" />
-        <circle cx="12" cy="10" r="2.6" />
-      </svg>
-    ),
-  },
-  {
-    href: "/incidents",
-    label: "Incidents",
-    hint: "Incident log: every alert and its outcome",
-    icon: (
-      <svg viewBox="0 0 24 24" {...ICON} aria-hidden>
-        <path d="M12 3.5 2.8 19.5a1 1 0 0 0 .9 1.5h16.6a1 1 0 0 0 .9-1.5z" />
-        <path d="M12 10v4.5M12 17.6v.01" />
-      </svg>
-    ),
-  },
-  {
-    href: "/results",
-    label: "Analysis",
-    hint: "Analysis: accuracy, speed and scale results",
-    icon: (
-      <svg viewBox="0 0 24 24" {...ICON} aria-hidden>
-        <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" />
-      </svg>
-    ),
-  },
+import Icon, { type IconName } from "./Icon";
+
+// Only modules that have a working page are listed. Camera Management and System Health / Settings
+// have no implementation yet, so they are deliberately absent rather than shown as dead links.
+const NAV: { href: string; label: string; icon: IconName; hint: string }[] = [
+  { href: "/", label: "Live Monitoring", icon: "live", hint: "All cameras and alerts" },
+  { href: "/incidents", label: "Incident Management", icon: "incidents", hint: "Every alert and its outcome" },
+  { href: "/trace", label: "Trace & Investigation", icon: "trace", hint: "Follow a suspect on the map" },
+  { href: "/results", label: "Analytics & Reports", icon: "analytics", hint: "Accuracy, speed and scale results" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { state } = useCms();
+  const pending = Object.values(state.incidents).filter((i) => i.status === "PENDING_REVIEW").length;
   return (
     <nav
-      aria-label="Main"
-      className="flex w-[88px] shrink-0 flex-col items-center gap-2 rounded-2xl border border-line bg-shell px-2 py-4 shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
+      aria-label="Modules"
+      className="flex w-14 shrink-0 flex-col gap-0.5 border-r border-line bg-panel py-2 lg:w-64"
     >
-      <Link href="/" aria-label="Central Monitoring System" className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-white">
-        <svg viewBox="0 0 24 24" width="22" height="22" {...ICON} aria-hidden>
-          <path d="M12 3 4 6v5.5c0 4.6 3.3 8.3 8 9.5 4.7-1.2 8-4.9 8-9.5V6z" />
-          <circle cx="12" cy="11" r="2.4" />
-        </svg>
-      </Link>
+      <div className="hidden px-4 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted lg:block">
+        Modules
+      </div>
       {NAV.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        const badge = item.href === "/incidents" && pending > 0 ? pending : 0;
         return (
           <Link
             key={item.href}
             href={item.href}
-            title={item.hint}
+            title={`${item.label}: ${item.hint}`}
             aria-current={active ? "page" : undefined}
-            className={`group flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[11px] font-medium transition-colors ${
-              active ? "bg-white/10 text-white" : "text-muted hover:bg-white/5 hover:text-slate-100"
+            className={`relative mx-1.5 flex items-center gap-3 rounded-[var(--r-md)] px-2.5 py-2.5 text-[13px] transition-colors lg:mx-2 ${
+              active
+                ? "bg-brand-tint font-semibold text-ink"
+                : "font-medium text-muted hover:bg-panel2 hover:text-ink"
             }`}
           >
             <span
-              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors [&>svg]:h-5 [&>svg]:w-5 ${
-                active ? "bg-accent text-white" : "group-hover:text-white"
-              }`}
-            >
-              {item.icon}
-            </span>
-            {item.label}
+              aria-hidden
+              className={`absolute -left-1.5 bottom-1.5 top-1.5 w-[3px] rounded-r lg:-left-2 ${active ? "bg-brand" : "bg-transparent"}`}
+            />
+            <Icon name={item.icon} size={18} className={active ? "text-brand-soft" : ""} />
+            <span className="hidden flex-1 truncate lg:inline">{item.label}</span>
+            {badge > 0 && (
+              <span className="hidden min-w-5 rounded-full bg-brand px-1.5 text-center text-[11px] font-bold leading-5 text-white lg:inline">
+                {badge}
+                <span className="sr-only"> awaiting review</span>
+              </span>
+            )}
           </Link>
         );
       })}

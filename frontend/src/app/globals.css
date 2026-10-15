@@ -1,44 +1,82 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------------------------
+   Design tokens. Dark charcoal glass theme: soft-rounded frosted panels on a charcoal ground,
+   an orange accent for primary actions / selection / critical alerts.
+   --brand is a fill colour; use --brand-soft for crimson text and icons on dark surfaces.
+   The video wells keep their own near-black (--video).
+   --------------------------------------------------------------------------------------------- */
 :root {
-  /* soft graphite surfaces, rounded cards, pastel accents (dashboard reference) */
-  --bg: #131418;
-  --shell: #1a1c21;
-  --panel: #202329;
-  --panel-2: #2a2d35;
-  --line: #333741;
-  --text: #e8eaf0;
-  --muted: #9ba2b0;
-  --accent: #ef4444;
-  --ok: #4ade80;
-  --warn: #f5b94d;
-  --info: #7cc4f8;
-  /* pastel stat tiles (dark text on light fills) */
-  --tile-blue: #bfe3fb;
-  --tile-sand: #f4e2c6;
-  --tile-mint: #bdeed8;
-  --tile-rose: #fbc9cf;
-  /* chart series, validated against the panel surface (dataviz: dark slots 1 and 2) */
-  --series-1: #3987e5;
-  --series-2: #d95926;
+  --brand: #e8590c; /* orange fill; white text on it is bold/large only */
+  --brand-strong: #f4701f; /* hover fill */
+  --brand-soft: #ff9a5c; /* orange as text/icon on charcoal */
+  --brand-tint: rgba(242, 106, 29, 0.22);
+  --ink: #f6f6f7; /* headings, high-contrast text */
+  --bg: #111112; /* page ground */
+  --shell: #18181a;
+  --panel: rgba(36, 36, 39, 0.78); /* frosted glass over the page glow */
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.24);
+  --text: #ececee;
+  --muted: #a6a6ad;
+  --video: #0a0a0b;
+
+  /* operational status: always paired with an icon and a text label */
+  --ok: #5fd68a;
+  --ok-tint: rgba(95, 214, 138, 0.14);
+  --warn: #f6b84b;
+  --warn-tint: rgba(246, 184, 75, 0.15);
+  --crit: #ff7a8c;
+  --crit-tint: rgba(255, 90, 115, 0.16);
+  --info: #86b8ff;
+  --info-tint: rgba(134, 184, 255, 0.15);
+  --neutral: #b4b4bc;
+  --neutral-tint: rgba(255, 255, 255, 0.08);
+
+  --accent: var(--brand);
+  --series-1: #ff8a3d;
+  --series-2: #7db4ff;
+
+  /* spacing / radii / elevation / icons */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --header-h: 56px;
 }
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-tint: var(--brand-tint);
+  --color-ink: var(--ink);
   --color-bg: var(--bg);
   --color-shell: var(--shell);
   --color-panel: var(--panel);
   --color-panel2: var(--panel-2);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
   --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-crit: var(--crit);
+  --color-crit-tint: var(--crit-tint);
   --color-info: var(--info);
-  --color-tile-blue: var(--tile-blue);
-  --color-tile-sand: var(--tile-sand);
-  --color-tile-mint: var(--tile-mint);
-  --color-tile-rose: var(--tile-rose);
+  --color-info-tint: var(--info-tint);
+  --color-neutral: var(--neutral);
+  --color-neutral-tint: var(--neutral-tint);
+  --color-video: var(--video);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
   --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
 }
@@ -49,151 +87,78 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(900px 520px at 85% -8%, rgba(242, 106, 29, 0.2), transparent 62%),
+    radial-gradient(900px 650px at -5% 105%, rgba(242, 106, 29, 0.11), transparent 60%),
+    linear-gradient(180deg, #212124 0%, #0d0d0e 100%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
+  font-size: 14px;
   color-scheme: dark;
 }
 
-/* ---- stat cards: pastel gradient, icon chip, soft glow, decorative orb ---- */
-.stat-card {
-  --tone: var(--tile-blue);
-  --ink: #0c4a6e;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  overflow: hidden;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  padding: 0.875rem 1.125rem;
-  text-align: left;
-  color: #0f172a;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--tone) 55%, white) 0%, var(--tone) 70%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 8px 20px -10px color-mix(in srgb, var(--tone) 70%, transparent);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+/* gradient sheen on surfaces and crimson gradients on fills (colour comes from the token utility) */
+.bg-panel {
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 55%);
+  backdrop-filter: blur(16px);
 }
-.stat-card::before {
-  content: "";
-  position: absolute;
-  right: -28px;
-  top: -44px;
-  height: 120px;
-  width: 120px;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
-  pointer-events: none;
+.bg-panel2,
+.hover\:bg-panel2:hover {
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01));
 }
-.stat-card::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 22%;
-  bottom: 22%;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: var(--ink);
-  opacity: 0.55;
+.bg-brand,
+.bg-accent {
+  background-image: linear-gradient(135deg, #f26a1d 0%, #c2410c 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
 }
-.stat-blue {
-  --tone: var(--tile-blue);
-  --ink: #0c4a6e;
+.hover\:bg-brand-strong:hover {
+  background-image: linear-gradient(135deg, #ff8236 0%, #dd5410 100%);
 }
-.stat-rose {
-  --tone: var(--tile-rose);
-  --ink: #9f1239;
+.bg-brand-tint {
+  background-image: linear-gradient(90deg, rgba(242, 106, 29, 0.5), rgba(242, 106, 29, 0.06));
 }
-.stat-mint {
-  --tone: var(--tile-mint);
-  --ink: #065f46;
+header.bg-panel {
+  background-image:
+    radial-gradient(520px 90px at 0% 0%, rgba(242, 106, 29, 0.28), transparent 70%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 55%);
 }
-.stat-sand {
-  --tone: var(--tile-sand);
-  --ink: #92400e;
+.ring-glow {
+  box-shadow: 0 0 24px rgba(242, 106, 29, 0.3);
 }
-.stat-chip {
-  position: relative;
-  display: flex;
-  height: 2.5rem;
-  width: 2.5rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.75rem;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--ink) 40%, transparent);
+
+/* frosted surface, as on the lock cards */
+.glass {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
 }
-.stat-chip svg {
-  height: 1.25rem;
-  width: 1.25rem;
+
+/* dark basemap: invert the light OSM tiles */
+.leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }
-.stat-value {
-  color: var(--ink);
+
+.mono-time {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-.stat-action {
-  cursor: pointer;
-}
-.stat-action:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 12px 24px -10px color-mix(in srgb, var(--tone) 90%, transparent);
-}
-.stat-ping {
-  position: absolute;
-  right: 0.75rem;
-  top: 0.75rem;
-  height: 0.5rem;
-  width: 0.5rem;
-  border-radius: 9999px;
-  background: var(--ink);
-}
-.stat-ping::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: var(--ink);
-  animation: pin-ping 1.4s ease-out infinite;
+  letter-spacing: 0.01em;
 }
 
-/* pulsing red frame around a camera tile with an open alert */
-@keyframes alert-pulse {
-  0%,
-  100% {
-    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.95), 0 0 22px rgba(239, 68, 68, 0.55);
-  }
-  50% {
-    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.25), 0 0 4px rgba(239, 68, 68, 0.15);
-  }
+/* visible keyboard focus everywhere; the alert panel takes programmatic focus only (tabindex -1) */
+:focus-visible:not([tabindex="-1"]) {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
 }
-.tile-alerting {
-  animation: alert-pulse 1.1s ease-in-out infinite;
+.on-dark:focus-visible {
+  outline-color: #93c5fd;
 }
 
-@keyframes rec-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.25;
-  }
-}
-.rec-dot {
-  animation: rec-blink 1.4s steps(1) infinite;
-}
-
+/* Motion is limited to: a new alert sliding in, and a spinner while connecting. */
 @keyframes card-in {
   from {
-    transform: translateX(32px);
+    transform: translateX(24px);
     opacity: 0;
   }
   to {
@@ -202,37 +167,31 @@ body {
   }
 }
 .card-in {
-  animation: card-in 0.28s ease-out both;
+  animation: card-in 0.22s ease-out both;
 }
-
-.mono-time {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
-
-/* visible keyboard focus everywhere; the alert panel takes programmatic focus only (tabindex -1) */
-:focus-visible:not([tabindex="-1"]) {
-  outline: 2px solid #93c5fd;
-  outline-offset: 2px;
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes pin-ping {
+  from {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card-in,
-  .rec-dot,
-  .stat-ping::after {
+  .spin {
     animation: none;
-  }
-  .stat-card {
-    transition: none;
-  }
-  .stat-action:hover {
-    transform: none;
-  }
-  /* keep the alerting tile obvious without the pulse */
-  .tile-alerting {
-    animation: none;
-    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.95), 0 0 12px rgba(239, 68, 68, 0.4);
   }
 }
 
@@ -326,8 +285,8 @@ body {
 .trace-popup .leaflet-popup-content-wrapper {
   background: #202329;
   color: #e2e8f0;
-  border: 1px solid #ef4444;
-  border-radius: 6px;
+  border: 1px solid #e8590c;
+  border-radius: 12px;
   padding: 0;
 }
 .trace-popup .leaflet-popup-content {
@@ -403,6 +362,180 @@ body {
   .check-draw,
   .fade-up,
   .track-flow {
+    animation: none;
+  }
+}
+
+/* ---- entrance / dynamic effects ---- */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: rise 0.4s ease-out both;
+}
+/* children of a .stagger container appear one after another */
+.stagger > * {
+  animation: rise 0.5s ease-out both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.12s; }
+.stagger > *:nth-child(3) { animation-delay: 0.19s; }
+.stagger > *:nth-child(4) { animation-delay: 0.26s; }
+.stagger > *:nth-child(5) { animation-delay: 0.33s; }
+.stagger > *:nth-child(6) { animation-delay: 0.4s; }
+.stagger > *:nth-child(n + 7) { animation-delay: 0.47s; }
+
+/* cards lift slightly when hovered */
+.lift {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-pop);
+}
+
+/* chart bars grow from the axis, the scale line draws itself */
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.bar-grow {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: bar-grow 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.line-draw {
+  stroke-dasharray: 1;
+  animation: line-draw 1.2s 0.2s ease-out both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.dot-in {
+  animation: fade-in 0.4s ease-out both;
+}
+.area-in {
+  animation: fade-in 1s 0.5s ease-out both;
+}
+.chart-glow {
+  filter: drop-shadow(0 0 6px rgba(255, 138, 61, 0.55));
+}
+.label-in {
+  animation: fade-in 0.4s ease-out both;
+}
+/* chart marks react to the pointer; the rest of the chart dims */
+.pt {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+.pt:hover {
+  transform: scale(1.6);
+}
+/* neon glow on the latency bars; hovering a row intensifies it */
+.glow-orange {
+  filter: drop-shadow(0 0 4px rgba(255, 138, 61, 0.55)) drop-shadow(0 0 9px rgba(255, 138, 61, 0.22));
+}
+.glow-blue {
+  filter: drop-shadow(0 0 4px rgba(125, 180, 255, 0.5)) drop-shadow(0 0 9px rgba(125, 180, 255, 0.2));
+}
+.bar-row:hover .glow-orange {
+  filter: drop-shadow(0 0 5px rgba(255, 138, 61, 0.7)) drop-shadow(0 0 12px rgba(255, 138, 61, 0.3));
+}
+.bar-row:hover .glow-blue {
+  filter: drop-shadow(0 0 5px rgba(125, 180, 255, 0.65)) drop-shadow(0 0 12px rgba(125, 180, 255, 0.28));
+}
+@keyframes ring-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.ring-ping {
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-ping 1.8s ease-out infinite;
+}
+
+/* soft expanding ring on "needs attention" indicators */
+@keyframes soft-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgba(242, 106, 29, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(242, 106, 29, 0);
+  }
+}
+.pulse-ring {
+  animation: soft-ping 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .stagger > *,
+  .bar-grow,
+  .line-draw,
+  .dot-in,
+  .area-in,
+  .label-in,
+  .ring-ping,
+  .pulse-ring {
+    animation: none;
+  }
+  .line-draw {
+    stroke-dasharray: none;
+  }
+  .lift,
+  .lift:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* logo radar sweep */
+@keyframes radar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.radar-sweep {
+  transform-box: view-box;
+  transform-origin: 24px 28px;
+  animation: radar 3.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep {
     animation: none;
   }
 }

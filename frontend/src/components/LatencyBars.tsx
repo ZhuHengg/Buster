@@ -30,37 +30,53 @@ export default function LatencyBars({ stages }: { stages: Stage[] }) {
   const height = stages.length * ROW_H + 8;
   return (
     <figure className="flex flex-col gap-2">
-      <figcaption className="flex items-center gap-4 text-xs text-slate-300">
+      <figcaption className="flex items-center gap-4 text-xs text-muted">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--series-1)" }} />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "linear-gradient(90deg,#c2410c,#ff9a52)" }} />
           median (p50)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--series-2)" }} />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "linear-gradient(90deg,#3f68b8,#8fc0ff)" }} />
           slow case (p90)
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Latency per stage, p50 and p90, in seconds" className="w-full">
+      <svg viewBox={`0 0 ${W} ${height}`} role="img" aria-label="Latency per stage, p50 and p90, in seconds" className="w-full overflow-visible">
+        <defs>
+          <linearGradient id="lat-p50" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#c2410c" />
+            <stop offset="1" stopColor="#ff9a52" />
+          </linearGradient>
+          <linearGradient id="lat-p90" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#3f68b8" />
+            <stop offset="1" stopColor="#8fc0ff" />
+          </linearGradient>
+        </defs>
         <line x1={LABEL_W} x2={LABEL_W} y1={0} y2={height} stroke="var(--line)" strokeWidth={1} />
         {stages.map((s, i) => {
           const y = i * ROW_H + 4;
           const bars = [
-            { name: "p50", v: s.p50, colour: "var(--series-1)", dy: 0 },
-            { name: "p90", v: s.p90, colour: "var(--series-2)", dy: BAR_H + GAP },
+            { name: "p50", v: s.p50, colour: "url(#lat-p50)", dy: 0 },
+            { name: "p90", v: s.p90, colour: "url(#lat-p90)", dy: BAR_H + GAP },
           ];
           return (
-            <g key={s.label}>
+            <g key={s.label} className="bar-row">
+              <rect x={LABEL_W} y={y} width={plotW} height={2 * BAR_H + GAP} rx={5} fill="white" opacity={0.035} stroke="white" strokeOpacity={0.06} />
               <text x={LABEL_W - 10} y={y + BAR_H + 3} textAnchor="end" fontSize={12} fill="var(--muted)">
                 {s.label}
               </text>
               {bars.map(({ name, v, colour, dy }) => (
                 <g key={name}>
                   {v !== null && (
-                    <rect x={LABEL_W} y={y + dy} width={Math.max(2, x(v))} height={BAR_H} rx={3} fill={colour}>
-                      <title>{`${s.label} ${name}: ${fmt(v)}`}</title>
-                    </rect>
+                    <g
+                      className={`bar-grow bar ${name === "p50" ? "glow-orange" : "glow-blue"}`}
+                      style={{ animationDelay: `${i * 90 + (dy ? 60 : 0)}ms` }}
+                    >
+                      <rect x={LABEL_W} y={y + dy} width={Math.max(2, x(v))} height={BAR_H} rx={5} fill={colour} fillOpacity={0.82}>
+                        <title>{`${s.label} ${name}: ${fmt(v)}`}</title>
+                      </rect>
+                    </g>
                   )}
-                  <text x={LABEL_W + (v === null ? 0 : Math.max(2, x(v))) + 6} y={y + dy + BAR_H - 2} fontSize={11} fill="var(--text)">
+                  <text x={LABEL_W + (v === null ? 0 : Math.max(2, x(v))) + 6} y={y + dy + BAR_H - 2} fontSize={11} fill="var(--text)" className="label-in" style={{ animationDelay: `${i * 90 + 600}ms` }}>
                     {fmt(v)}
                   </text>
                 </g>

@@ -18,14 +18,24 @@ export const STATUS_LABEL: Record<IncidentStatus, string> = {
   ESCALATED: "Escalated",
 };
 
-/** Tailwind classes for the status chip. */
+/** One colour per status so rows and filters read at a glance: amber waiting, red escalated, green approved, blue AI-filtered, grey closed. */
 export const STATUS_CHIP: Record<IncidentStatus, string> = {
-  CANDIDATE: "border-slate-500/60 bg-slate-500/10 text-slate-300",
-  AI_REJECTED: "border-sky-500/50 bg-sky-500/10 text-sky-300",
-  PENDING_REVIEW: "border-warn/60 bg-warn/10 text-warn",
-  APPROVED: "border-orange-500/60 bg-orange-500/10 text-orange-300",
-  REJECTED: "border-line bg-white/5 text-muted",
-  ESCALATED: "border-accent/60 bg-accent/10 text-red-300",
+  CANDIDATE: "border-line-strong bg-neutral-tint text-neutral",
+  AI_REJECTED: "border-info/50 bg-info-tint text-info",
+  PENDING_REVIEW: "border-warn/60 bg-warn-tint text-warn",
+  APPROVED: "border-ok/50 bg-ok-tint text-ok",
+  REJECTED: "border-line-strong bg-panel2 text-muted",
+  ESCALATED: "border-crit/60 bg-crit-tint text-crit",
+};
+
+/** Filter pills above the incident table: always filled with the status colour (like the health pill); the selected one also gets an outline. */
+export const STATUS_FILTER: Record<IncidentStatus, { idle: string; active: string }> = {
+  PENDING_REVIEW: { idle: "border-transparent bg-warn-tint text-warn hover:brightness-125", active: "border-warn bg-warn-tint text-warn" },
+  ESCALATED: { idle: "border-transparent bg-crit-tint text-crit hover:brightness-125", active: "border-crit bg-crit-tint text-crit" },
+  APPROVED: { idle: "border-transparent bg-ok-tint text-ok hover:brightness-125", active: "border-ok bg-ok-tint text-ok" },
+  REJECTED: { idle: "border-transparent bg-white/10 text-muted hover:brightness-125", active: "border-muted bg-white/10 text-ink" },
+  AI_REJECTED: { idle: "border-transparent bg-info-tint text-info hover:brightness-125", active: "border-info bg-info-tint text-info" },
+  CANDIDATE: { idle: "border-transparent bg-white/10 text-muted hover:brightness-125", active: "border-muted bg-white/10 text-ink" },
 };
 
 export const seconds = (n: number | undefined): string => (n === undefined ? "—" : `${n.toFixed(1)} s`);
