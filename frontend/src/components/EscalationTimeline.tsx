@@ -13,48 +13,59 @@ const STATUS_TEXT: Record<Status, string> = {
   skipped: "Skipped",
 };
 
-function Icon({ status }: { status: Status | "waiting" }) {
-  const base = "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-bold";
-  switch (status) {
-    case "completed":
-    case "sent":
-      return (
-        <span className={`${base} border-ok bg-ok/15 text-ok`} aria-hidden>
-          ✓
-        </span>
-      );
-    case "failed":
-      return (
-        <span className={`${base} border-accent bg-accent/15 text-accent`} aria-hidden>
-          ✕
-        </span>
-      );
-    case "ringing":
-    case "in_progress":
-      return (
-        <span className={`${base} rec-dot border-warn bg-warn/15 text-warn`} aria-hidden>
-          ●
-        </span>
-      );
-    case "queued":
-      return (
-        <span className={`${base} border-slate-500 text-slate-300`} aria-hidden>
-          …
-        </span>
-      );
-    case "skipped":
-      return (
-        <span className={`${base} border-line text-muted`} aria-hidden>
-          –
-        </span>
-      );
-    default:
-      return (
-        <span className={`${base} border-line text-muted`} aria-hidden>
-          ○
-        </span>
-      );
-  }
+const DONE: Status[] = ["completed", "sent"];
+const ACTIVE: Status[] = ["ringing", "in_progress"];
+
+/** One node on the timeline. Colour and icon change smoothly as the step moves along. */
+function Node({ status }: { status: Status | "waiting" }) {
+  const done = status === "completed" || status === "sent";
+  const failed = status === "failed";
+  const active = status === "ringing" || status === "in_progress";
+  const tone = done
+    ? "border-ok bg-ok text-slate-900"
+    : failed
+      ? "border-accent bg-accent text-white"
+      : active
+        ? "border-warn bg-warn/20 text-warn"
+        : status === "queued"
+          ? "border-slate-400 bg-panel text-slate-300"
+          : "border-line bg-panel text-muted";
+  return (
+    // key on status: the node pops each time the step changes state
+    <span key={status} className={`step-pop relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors duration-500 ${tone}`} aria-hidden>
+      {active && <span className="absolute inset-0 animate-ping rounded-full bg-warn/40" />}
+      {done && (
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+          <path className="check-draw" d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+      )}
+      {failed && (
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      )}
+      {active && <span className="relative h-2 w-2 rounded-full bg-warn" />}
+      {!done && !failed && !active && status === "queued" && <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />}
+      {status === "skipped" && <span className="h-0.5 w-2.5 rounded bg-muted" />}
+    </span>
+  );
+}
+
+/** The line to the next node: fills left to right once this step is done, flows while it is running. */
+function Track({ status }: { status: Status | "waiting" }) {
+  const done = DONE.includes(status as Status);
+  const active = ACTIVE.includes(status as Status);
+  return (
+    <span
+      aria-hidden
+      className="absolute left-[calc(50%+18px)] top-[12px] h-[3px] w-[calc(100%-36px)] overflow-hidden rounded-full bg-line"
+    >
+      <span
+        className={`absolute inset-0 origin-left rounded-full bg-ok transition-transform duration-700 ease-out ${done ? "scale-x-100" : "scale-x-0"}`}
+      />
+      {active && <span className="track-flow absolute inset-0 rounded-full" />}
+    </span>
+  );
 }
 
 export default function EscalationTimeline({
@@ -64,7 +75,7 @@ export default function EscalationTimeline({
 }: {
   steps: EscalationStep[];
   gateLabel?: string;
-  compact?: boolean; // three columns, for tight spaces
+  compact?: boolean; // tighter text, for the alert card
 }) {
   const by = new Map<Channel, EscalationStep>(steps.map((s) => [s.channel, s]));
   const rows: { channel: Channel; label: string }[] = [
@@ -72,48 +83,25 @@ export default function EscalationTimeline({
     { channel: "police_sms", label: "Police SMS" },
     { channel: "gate_sms", label: gateLabel ? `${gateLabel} alert` : "Gate alert" },
   ];
-  if (compact) {
-    return (
-      <ol className="grid grid-cols-3 gap-2" aria-label="Escalation progress">
-        {rows.map(({ channel, label }) => {
-          const step = by.get(channel);
-          return (
-            <li
-              key={channel}
-              title={step?.detail ?? undefined}
-              className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-panel2 px-2.5 py-2"
-            >
-              <div className="flex items-center gap-2">
-                <Icon status={step?.status ?? "waiting"} />
-                <span className="truncate text-sm font-medium text-slate-100">{label}</span>
-              </div>
-              <span
-                className={`text-xs font-medium ${step?.status === "failed" ? "text-accent" : step ? "text-slate-200" : "text-muted"}`}
-              >
-                {step ? STATUS_TEXT[step.status] : "Waiting"}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    );
-  }
   return (
-    <ol className="flex flex-col gap-2" aria-label="Escalation progress">
-      {rows.map(({ channel, label }) => {
+    <ol className="grid grid-cols-3" aria-label="Escalation progress">
+      {rows.map(({ channel, label }, i) => {
         const step = by.get(channel);
+        const status = step?.status ?? "waiting";
         return (
-          <li key={channel} className="flex items-center gap-3 rounded-xl border border-line bg-panel2 px-3 py-2">
-            <Icon status={step?.status ?? "waiting"} />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-slate-100">{label}</div>
-              {step?.detail && <div className="truncate text-xs text-muted">{step.detail}</div>}
-            </div>
+          <li key={channel} title={step?.detail ?? undefined} className="relative flex min-w-0 flex-col items-center gap-1.5 px-1 text-center">
+            <Node status={status} />
+            {i < rows.length - 1 && <Track status={status} />}
+            <span className={`${compact ? "text-xs" : "text-sm"} w-full truncate font-medium text-slate-100`}>{label}</span>
             <span
-              className={`text-xs font-medium ${step?.status === "failed" ? "text-accent" : step ? "text-slate-200" : "text-muted"}`}
+              key={status}
+              className={`fade-up text-[11px] font-medium ${
+                status === "failed" ? "text-accent" : DONE.includes(status as Status) ? "text-ok" : step ? "text-slate-200" : "text-muted"
+              }`}
             >
               {step ? STATUS_TEXT[step.status] : "Waiting"}
             </span>
+            {!compact && step?.detail && <span className="w-full truncate text-[11px] text-muted">{step.detail}</span>}
           </li>
         );
       })}

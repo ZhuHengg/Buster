@@ -48,6 +48,35 @@ export function CmsHeader({
   );
 }
 
+type StatTone = "blue" | "rose" | "mint" | "sand";
+
+const STAT_ICONS: Record<StatTone, React.ReactNode> = {
+  blue: (
+    <>
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" />
+    </>
+  ),
+  rose: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </>
+  ),
+  mint: (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  sand: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M15 9l-6 6M9 9l6 6" />
+    </>
+  ),
+};
+
 function StatTile({
   tone,
   value,
@@ -55,7 +84,7 @@ function StatTile({
   hint,
   onClick,
 }: {
-  tone: string;
+  tone: StatTone;
   value: string;
   label: string;
   hint: string;
@@ -63,16 +92,25 @@ function StatTile({
 }) {
   const body = (
     <>
-      <div className="text-2xl font-bold leading-none">{value}</div>
-      <div className="min-w-0">
+      <span className="stat-chip" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {STAT_ICONS[tone]}
+        </svg>
+      </span>
+      <div className="relative min-w-0 flex-1">
         <div className="truncate text-sm font-semibold leading-tight">{label}</div>
-        <div className="truncate text-[11px] leading-tight opacity-70">{hint}</div>
+        <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-tight opacity-70">
+          {hint}
+          {onClick && <span aria-hidden="true">→</span>}
+        </div>
       </div>
+      <div className="stat-value relative text-3xl font-bold leading-none">{value}</div>
+      {onClick && <span className="stat-ping" aria-hidden="true" />}
     </>
   );
-  const cls = `flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-slate-900 ${tone}`;
+  const cls = `stat-card stat-${tone}`;
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} transition hover:brightness-95`}>
+    <button type="button" onClick={onClick} className={`${cls} stat-action`}>
       {body}
     </button>
   ) : (
@@ -113,16 +151,16 @@ export default function CameraGrid({ cameras, state, connected, pendingCount = 0
         )}
       </CmsHeader>
       <div className="grid shrink-0 grid-cols-2 gap-3 px-4 pt-4 lg:grid-cols-4">
-        <StatTile tone="bg-tile-blue" value={`${online}/${cameras.length}`} label="Cameras online" hint="Feeds streaming now" />
+        <StatTile tone="blue" value={`${online}/${cameras.length}`} label="Cameras online" hint="Feeds streaming now" />
         <StatTile
-          tone="bg-tile-rose"
+          tone="rose"
           value={String(pendingCount)}
           label="Awaiting your review"
           hint={pendingCount > 0 ? "Click to open" : "Nothing waiting"}
           onClick={pendingCount > 0 ? onReview : undefined}
         />
-        <StatTile tone="bg-tile-mint" value={String(escalated)} label="Escalated to police" hint="Approved by an operator" />
-        <StatTile tone="bg-tile-sand" value={String(dismissed)} label="Dismissed" hint="False alarms rejected" />
+        <StatTile tone="mint" value={String(escalated)} label="Escalated to police" hint="Approved by an operator" />
+        <StatTile tone="sand" value={String(dismissed)} label="Dismissed" hint="False alarms rejected" />
       </div>
       <main
         className="grid min-h-0 flex-1 grid-cols-3 gap-3 p-4"
