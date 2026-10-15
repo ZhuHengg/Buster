@@ -3,7 +3,7 @@
     "id": "CAM-01",
     "name": "Elmina Shoplot Row A",
     "location": "Elmina Central, Row A",
-    "clip": null,
+    "clip": "case-3.mp4",
     "analyse": false,
     "exits": {},
     "compass": {}
@@ -32,16 +32,7 @@
     "id": "CAM-03",
     "name": "Bus Stop Jalan Elmina 2",
     "location": "Jalan Elmina 2",
-    "clip": null,
-    "analyse": false,
-    "exits": {},
-    "compass": {}
-  },
-  {
-    "id": "CAM-04",
-    "name": "Gate A Entrance",
-    "location": "Gate A",
-    "clip": null,
+    "clip": "case-4.mp4",
     "analyse": false,
     "exits": {},
     "compass": {}
@@ -50,7 +41,7 @@
     "id": "CAM-05",
     "name": "Pasar Mini Car Park",
     "location": "Pasar Mini, Elmina Central",
-    "clip": null,
+    "clip": "case-6.mp4",
     "analyse": false,
     "exits": {},
     "compass": {}
@@ -59,7 +50,7 @@
     "id": "CAM-06",
     "name": "Community Hall Frontage",
     "location": "Dewan Komuniti",
-    "clip": null,
+    "clip": "case-5.mp4",
     "analyse": false,
     "exits": {},
     "compass": {}
@@ -81,23 +72,5 @@
       "left": "west",
       "right": "east"
     }
-  },
-  {
-    "id": "CAM-08",
-    "name": "Gate B Exit",
-    "location": "Gate B",
-    "clip": null,
-    "analyse": false,
-    "exits": {},
-    "compass": {}
-  },
-  {
-    "id": "CAM-09",
-    "name": "Playground Perimeter",
-    "location": "Taman Permainan",
-    "clip": null,
-    "analyse": false,
-    "exits": {},
-    "compass": {}
   }
 ]

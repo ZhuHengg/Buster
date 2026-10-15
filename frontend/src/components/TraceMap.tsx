@@ -209,9 +209,6 @@ export default function TraceMap() {
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="relative min-h-[360px] overflow-hidden rounded-xl border border-line bg-panel">
           <div ref={mapEl} className="absolute inset-0" />
-          <div className="pointer-events-none absolute left-14 top-3 z-[1000] rounded border border-warn/70 bg-black/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warn">
-            Demo · simulated cross-camera feed
-          </div>
         </section>
 
         <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-line bg-panel p-4">

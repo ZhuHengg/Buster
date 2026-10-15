@@ -124,7 +124,10 @@ export default function CameraGrid({ cameras, state, connected, pendingCount = 0
         <StatTile tone="bg-tile-mint" value={String(escalated)} label="Escalated to police" hint="Approved by an operator" />
         <StatTile tone="bg-tile-sand" value={String(dismissed)} label="Dismissed" hint="False alarms rejected" />
       </div>
-      <main className="grid min-h-0 flex-1 grid-cols-3 grid-rows-3 gap-3 p-4">
+      <main
+        className="grid min-h-0 flex-1 grid-cols-3 gap-3 p-4"
+        style={{ gridTemplateRows: `repeat(${Math.ceil(cameras.length / 3)}, minmax(0, 1fr))` }}
+      >
         {cameras.map((camera) => (
           <CameraTile
             key={camera.id}
